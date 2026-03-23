@@ -6,20 +6,20 @@ An engineering-oriented AI legal assistant for Chinese legal scenarios.
 
 ## Main Functions
 
-- **Supervisor-based multi-agent orchestration (LangGraph)**  
-  A supervisor node dispatches tasks to specialized workers, validates outputs, and supports rework/review loops.
+- **Ask legal questions in plain language**  
+  You can describe your issue naturally (labor disputes, rental conflicts, contract breach), and the system returns structured, easy-to-read guidance.
 
-- **Advanced RAG retrieval pipeline**  
-  Retrieval path: `Query Rewrite -> Vector Recall Top-15 -> Cross-Encoder Rerank -> Top-3`.
+- **Automatic contract risk review**  
+  After uploading a contract, SparkLaw highlights risky clauses and explains what is risky and how to revise it.
 
-- **FastAPI + SSE streaming**  
-  Async backend with real-time status events (`tool_call`, `tool_result`, `final`) for better UX and observability.
+- **Courtroom-style scenario simulation**  
+  The system can analyze a case from different perspectives (plaintiff/defendant/judge), helping users understand likely dispute points.
 
-- **Celery async processing**  
-  Long-running contract review tasks are moved out of request threads via Celery + Redis.
+- **Real-time answer streaming**  
+  Instead of waiting for a full block of text, users can see progressive output and follow the reasoning process step by step.
 
-- **Offline evaluation baseline (LLM-as-a-Judge)**  
-  `eval/` provides dataset generation, auto-scoring, and Markdown/JSON report output.
+- **Built-in quality evaluation**  
+  The project includes offline evaluation scripts to keep quality improvements measurable and repeatable.
 
 ---
 

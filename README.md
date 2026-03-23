@@ -1,26 +1,34 @@
 # SparkLaw
 
 > “法自人民来，理为群众讲。”
+<p align="left">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-ffd43b.svg" alt="License"></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB.svg" alt="Python"></a>
+  <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-14-000000.svg" alt="Next.js"></a>
+  <a href="https://github.com/langchain-ai/langgraph"><img src="https://img.shields.io/badge/LangGraph-Agent%20Orchestration-E74C3C.svg" alt="LangGraph"></a>
+  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-Async%20SSE-009688.svg" alt="FastAPI"></a>
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-Welcome-2EA44F.svg" alt="PRs Welcome"></a>
+</p>
+
 
 ---
 
 ## 主要功能 (Core Functions)
 
-- **Supervisor 多智能体编排（LangGraph）**  
-  通过 Supervisor 节点把任务分发给不同 Worker，再进行验收、回流和汇总。当前已支持法律检索、合同分析、策略生成等角色化协作。
+- **法律问题即时咨询**  
+  可以像聊天一样描述你的问题（比如劳动纠纷、租房纠纷、合同违约），系统会给出结构化、可读性强的法律建议。
 
-- **Advanced RAG 检索链路**  
-  检索流程为：`Query Rewrite -> Vector Recall Top-15 -> Cross-Encoder Rerank -> Top-3`。  
-  其中 Query Rewrite 用于把口语问题映射为法律语义更明确的检索词，Rerank 用于在候选片段中做精排。
+- **合同风险自动识别**  
+  上传合同后，系统会标出可能有风险的条款，并给出“为什么有风险、建议怎么改”的说明，帮助普通用户快速看懂合同。
 
-- **FastAPI + SSE 流式输出**  
-  后端采用异步接口，前端可实时接收状态事件（如 tool_call、tool_result、final），便于交互体验和链路调试。
+- **模拟法庭推演**  
+  系统会从不同立场（如原告/被告/法官）进行对照分析，帮助你提前看到争议焦点和可能的裁判方向。
 
-- **Celery 异步任务链路**  
-  对合同审查等长耗时流程提供任务队列支持，避免阻塞请求线程。
+- **流式展示分析过程**  
+  回答不是一次性“憋出来”的长文本，而是实时输出过程，便于理解系统是如何一步步得到结论的。
 
-- **离线评估基线（LLM-as-a-Judge）**  
-  `eval/` 提供评估集生成与自动评分脚本，输出 Markdown/JSON 报告，便于做版本间对比。
+- **持续改进的评估体系**  
+  项目内置离线评估脚本，持续检查回答质量，让功能迭代更稳定，而不是仅靠主观感受。
 
 ---
 
