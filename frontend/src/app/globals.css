@@ -1,0 +1,703 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   SparkLaw Design System - Inspired by shadcn/ui
+   ============================================ */
+
+@layer base {
+  :root {
+    /* Background Colors - 极简秩序 */
+    --background: 0 0% 100%;  /* #FFFFFF */
+    --foreground: 222.2 84% 4.9%;  /* 深黑色 - 加深到接近黑色 */
+    
+    /* Card Colors */
+    --card: 0 0% 100%;  /* #FFFFFF - 改为纯白 */
+    --card-foreground: 222.2 84% 4.9%;  /* 深黑色 */
+    
+    /* Popover Colors */
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;  /* 深黑色 */
+    
+    /* Primary Colors - 深海军蓝 */
+    --primary: 217 91% 40%;  /* #1E40AF */
+    --primary-foreground: 0 0% 100%;
+    
+    /* Secondary Colors */
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 84% 4.9%;  /* 深黑色 */
+    
+    /* Muted Colors */
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;  /* 深灰色 - 提高对比度到 46.9% */
+    
+    /* Accent Colors */
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 84% 4.9%;  /* 深黑色 */
+    
+    /* Destructive Colors */
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    
+    /* Border & Input */
+    --border: 214.3 31.8% 91.4%;  /* 浅色边框 */
+    --input: 214.3 31.8% 91.4%;
+    --ring: 217 91% 40%;  /* 深海军蓝 */
+    
+    /* Radius */
+    --radius: 0.5rem;
+    
+    /* Legal Brand Colors - 方案 A */
+    --legal-navy: 217 91% 40%;      /* 深海军蓝 #1E40AF */
+    --legal-gold: 30 91% 38%;       /* 法律金 #B45309 */
+  }
+
+  .dark {
+    /* Background Colors */
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;  /* 浅白色 */
+    
+    /* Card Colors */
+    --card: 217.2 32.6% 10%;  /* 稍微提亮卡片背景 */
+    --card-foreground: 210 40% 98%;  /* 浅白色 */
+    
+    /* Popover Colors */
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;  /* 浅白色 */
+    
+    /* Primary Colors */
+    --primary: 217 91% 60%;  /* 提亮主色调 */
+    --primary-foreground: 0 0% 100%;
+    
+    /* Secondary Colors */
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;  /* 浅白色 */
+    
+    /* Muted Colors */
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;  /* 浅灰色 - 提高对比度到 65.1% */
+    
+    /* Accent Colors */
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;  /* 浅白色 */
+    
+    /* Destructive Colors */
+    --destructive: 0 62.8% 50.6%;  /* 提亮红色 */
+    --destructive-foreground: 210 40% 98%;  /* 浅白色 */
+    
+    /* Border & Input */
+    --border: 217.2 32.6% 20%;  /* 提亮边框 */
+    --input: 217.2 32.6% 20%;
+    --ring: 217 91% 60%;  /* 提亮焦点环 */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  /* Typography System - 法律特质 */
+  h1, h2, h3 {
+    @apply font-serif;
+  }
+  
+  h1 {
+    @apply text-2xl font-extrabold tracking-tight lg:text-3xl;
+  }
+  
+  h2 {
+    @apply text-xl font-bold tracking-tight;
+  }
+  
+  h3 {
+    @apply text-lg font-semibold tracking-tight;
+  }
+  
+  p {
+    @apply leading-7 text-sm;
+  }
+  
+  /* 法律文本专用字体 - 正式判决书风格 */
+  .legal-text {
+    font-family: "SimSun", "STSong", "Noto Serif SC", "Times New Roman", serif;
+    @apply leading-relaxed;
+  }
+  
+  /* Markdown 内容字体 */
+  .prose {
+    font-family: "SimSun", "STSong", "Noto Serif SC", "Times New Roman", serif;
+  }
+  
+  /* 字体大小变体 - 完善版 */
+  
+  /* 小字体模式 (12px 基准) */
+  .font-small {
+    font-size: 12px;
+  }
+  
+  .font-small p,
+  .font-small .text-sm {
+    font-size: 11px;
+  }
+  
+  .font-small .text-xs {
+    font-size: 10px;
+  }
+  
+  .font-small .text-base {
+    font-size: 12px;
+  }
+  
+  .font-small .text-lg {
+    font-size: 14px;
+  }
+  
+  .font-small .text-xl {
+    font-size: 16px;
+  }
+  
+  .font-small .text-2xl {
+    font-size: 18px;
+  }
+  
+  .font-small .text-3xl {
+    font-size: 22px;
+  }
+  
+  .font-small h1 {
+    font-size: 18px;
+  }
+  
+  .font-small h2 {
+    font-size: 16px;
+  }
+  
+  .font-small h3 {
+    font-size: 14px;
+  }
+  
+  .font-small button,
+  .font-small input,
+  .font-small textarea,
+  .font-small select {
+    font-size: 11px;
+  }
+  
+  /* 中等字体模式 (14px 基准 - 默认) */
+  .font-medium {
+    font-size: 14px;
+  }
+  
+  .font-medium p,
+  .font-medium .text-sm {
+    font-size: 14px;
+  }
+  
+  .font-medium .text-xs {
+    font-size: 12px;
+  }
+  
+  .font-medium .text-base {
+    font-size: 16px;
+  }
+  
+  .font-medium .text-lg {
+    font-size: 18px;
+  }
+  
+  .font-medium .text-xl {
+    font-size: 20px;
+  }
+  
+  .font-medium .text-2xl {
+    font-size: 24px;
+  }
+  
+  .font-medium .text-3xl {
+    font-size: 30px;
+  }
+  
+  .font-medium h1 {
+    font-size: 24px;
+  }
+  
+  .font-medium h2 {
+    font-size: 20px;
+  }
+  
+  .font-medium h3 {
+    font-size: 18px;
+  }
+  
+  .font-medium button,
+  .font-medium input,
+  .font-medium textarea,
+  .font-medium select {
+    font-size: 14px;
+  }
+  
+  /* 大字体模式 (16px 基准) */
+  .font-large {
+    font-size: 16px;
+  }
+  
+  .font-large p,
+  .font-large .text-sm {
+    font-size: 16px;
+  }
+  
+  .font-large .text-xs {
+    font-size: 14px;
+  }
+  
+  .font-large .text-base {
+    font-size: 18px;
+  }
+  
+  .font-large .text-lg {
+    font-size: 20px;
+  }
+  
+  .font-large .text-xl {
+    font-size: 24px;
+  }
+  
+  .font-large .text-2xl {
+    font-size: 28px;
+  }
+  
+  .font-large .text-3xl {
+    font-size: 36px;
+  }
+  
+  .font-large h1 {
+    font-size: 28px;
+  }
+  
+  .font-large h2 {
+    font-size: 24px;
+  }
+  
+  .font-large h3 {
+    font-size: 20px;
+  }
+  
+  .font-large button,
+  .font-large input,
+  .font-large textarea,
+  .font-large select {
+    font-size: 16px;
+  }
+  
+  /* Markdown 内容字体大小适配 */
+  .font-small .prose {
+    font-size: 11px;
+  }
+  
+  .font-medium .prose {
+    font-size: 14px;
+  }
+  
+  .font-large .prose {
+    font-size: 16px;
+  }
+  
+  /* 界面密度变体 - 完善版 */
+  
+  /* 紧凑模式 */
+  .density-compact {
+    --spacing-unit: 0.5rem;
+  }
+  
+  .density-compact .card,
+  .density-compact .rounded-lg {
+    @apply p-2;
+  }
+  
+  .density-compact button:not(.no-density) {
+    @apply py-1 px-3;
+  }
+  
+  .density-compact input,
+  .density-compact textarea,
+  .density-compact select {
+    @apply py-1 px-2;
+  }
+  
+  .density-compact .space-y-6 > * + * {
+    margin-top: 1rem !important;
+  }
+  
+  .density-compact .space-y-4 > * + * {
+    margin-top: 0.75rem !important;
+  }
+  
+  .density-compact .space-y-3 > * + * {
+    margin-top: 0.5rem !important;
+  }
+  
+  .density-compact .space-y-2 > * + * {
+    margin-top: 0.375rem !important;
+  }
+  
+  .density-compact .gap-6 {
+    gap: 1rem !important;
+  }
+  
+  .density-compact .gap-4 {
+    gap: 0.75rem !important;
+  }
+  
+  .density-compact .gap-3 {
+    gap: 0.5rem !important;
+  }
+  
+  .density-compact .gap-2 {
+    gap: 0.375rem !important;
+  }
+  
+  /* 标准模式 (默认) */
+  .density-standard {
+    --spacing-unit: 1rem;
+  }
+  
+  /* 宽松模式 */
+  .density-relaxed {
+    --spacing-unit: 1.5rem;
+  }
+  
+  .density-relaxed .card,
+  .density-relaxed .rounded-lg {
+    @apply p-6;
+  }
+  
+  .density-relaxed button:not(.no-density) {
+    @apply py-3 px-6;
+  }
+  
+  .density-relaxed input,
+  .density-relaxed textarea,
+  .density-relaxed select {
+    @apply py-3 px-4;
+  }
+  
+  .density-relaxed .space-y-6 > * + * {
+    margin-top: 2rem !important;
+  }
+  
+  .density-relaxed .space-y-4 > * + * {
+    margin-top: 1.5rem !important;
+  }
+  
+  .density-relaxed .space-y-3 > * + * {
+    margin-top: 1.25rem !important;
+  }
+  
+  .density-relaxed .space-y-2 > * + * {
+    margin-top: 1rem !important;
+  }
+  
+  .density-relaxed .gap-6 {
+    gap: 2rem !important;
+  }
+  
+  .density-relaxed .gap-4 {
+    gap: 1.5rem !important;
+  }
+  
+  .density-relaxed .gap-3 {
+    gap: 1.25rem !important;
+  }
+  
+  .density-relaxed .gap-2 {
+    gap: 1rem !important;
+  }
+  
+  /* 禁用动画 */
+  .no-animations * {
+    animation: none !important;
+    transition: none !important;
+  }
+  
+  /* 禁用火焰效果 */
+  .no-fire-effect .fire-particle,
+  .no-fire-effect .fire-glow {
+    display: none !important;
+  }
+}
+
+@layer utilities {
+  /* Glass Morphism */
+  .glass {
+    @apply bg-background/80 backdrop-blur-md border border-border;
+  }
+  
+  /* Card Variants */
+  .card {
+    @apply bg-card text-card-foreground border border-border shadow-sm rounded-lg;
+  }
+  
+  .card-hover {
+    @apply card transition-all duration-200 hover:shadow-md hover:border-primary/20;
+  }
+  
+  /* Legal Brand Gradient - 方案 A：深海军蓝 + 法律金 */
+  .gradient-legal {
+    @apply bg-gradient-to-r from-blue-900 via-blue-800 to-amber-700;
+  }
+  
+  .text-gradient-legal {
+    @apply bg-gradient-to-r from-blue-900 via-blue-800 to-amber-700 bg-clip-text text-transparent;
+  }
+  
+  /* Smooth Transitions */
+  .transition-smooth {
+    @apply transition-all duration-200 ease-in-out;
+  }
+  
+  /* Focus Ring */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-muted;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/40 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/60;
+}
+
+/* 深色模式下的滚动条优化 */
+.dark ::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/50;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/70;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* 火焰动画 */
+@keyframes fire-float {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateY(-20px) scale(0.5);
+    opacity: 0;
+  }
+}
+
+@keyframes fire-float-large {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(-30px) scale(0.3);
+    opacity: 0;
+  }
+}
+
+@keyframes fire-glow {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes fire-glow-large {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+.fire-particle {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffff00, #ff6b00, #ff0000);
+}
+
+.fire-particle-small {
+  animation: fire-float 2s ease-in-out infinite;
+  box-shadow: 0 0 8px rgba(255, 107, 0, 0.8);
+}
+
+.fire-particle-large {
+  animation: fire-float-large 2.5s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(255, 107, 0, 0.8);
+}
+
+.fire-glow {
+  animation: fire-glow 3s ease-in-out infinite;
+}
+
+/* 首页动画 */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes particle-float {
+  0% {
+    transform: translateY(0) translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-100vh) translateX(50px);
+    opacity: 0;
+  }
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spin-reverse {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes gradient {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 20s linear infinite;
+}
+
+.animate-spin-reverse {
+  animation: spin-reverse 15s linear infinite;
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient 3s ease infinite;
+}
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: radial-gradient(circle, rgba(96, 165, 250, 0.8), transparent);
+  border-radius: 50%;
+  animation: particle-float linear infinite;
+  pointer-events: none;
+}
+
+.animate-pulse-slow {
+  animation: fire-glow 3s ease-in-out infinite;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slideIn {
+  animation: slideIn 0.3s ease-out;
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+/* Print Styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

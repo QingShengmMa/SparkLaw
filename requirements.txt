@@ -1,0 +1,57 @@
+# FastAPI Core
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# LangChain Core
+langchain>=0.1.0
+langchain-core>=0.1.0
+langchain-community>=0.1.0
+langchain-openai>=0.0.5
+langgraph>=0.0.20
+
+# Logging
+loguru>=0.7.2
+
+# HTTP Client
+httpx>=0.26.0
+requests>=2.31.0
+
+# Search Tools
+duckduckgo-search>=5.0.0
+
+# Environment Variables
+python-dotenv>=1.0.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# Code Quality
+black>=23.12.0
+flake8>=7.0.0
+mypy>=1.8.0
+
+# Document Parsing
+PyMuPDF>=1.23.0
+python-docx>=1.1.0
+
+# Vector Database and Embeddings
+chromadb>=0.4.22
+sentence-transformers>=2.3.0
+
+# File Upload
+python-multipart>=0.0.6
+
+# SSE Support
+sse-starlette>=1.6.5
+
+# Retry Mechanism
+tenacity>=8.2.3
+
+# Async Task Queue
+celery>=5.4.0
+redis>=5.0.0
+
