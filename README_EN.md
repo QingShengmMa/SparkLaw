@@ -2,24 +2,24 @@
 
 An engineering-oriented AI legal assistant for Chinese legal scenarios.
 
-SparkLaw is built as an **application system**, not just an LLM showcase.  
-The project is opinionated around three priorities:
-
-1. **Executable agent orchestration** (beyond static prompts)
-2. **Retrieval quality control** (rewrite + recall + rerank)
-3. **Operational fallback behavior** (graceful degradation)
-
 ---
 
-## Why this project
+## Main Functions
 
-In legal AI, common failures appear quickly in production-like usage:
-- colloquial user queries lead to poor retrieval recall,
-- tool calling is declared but not truly executed in a loop,
-- long-running analysis blocks API workers,
-- iteration quality is hard to measure without a repeatable evaluation process.
+- **Supervisor-based multi-agent orchestration (LangGraph)**  
+  A supervisor node dispatches tasks to specialized workers, validates outputs, and supports rework/review loops.
 
-SparkLaw is implemented specifically to address these gaps.
+- **Advanced RAG retrieval pipeline**  
+  Retrieval path: `Query Rewrite -> Vector Recall Top-15 -> Cross-Encoder Rerank -> Top-3`.
+
+- **FastAPI + SSE streaming**  
+  Async backend with real-time status events (`tool_call`, `tool_result`, `final`) for better UX and observability.
+
+- **Celery async processing**  
+  Long-running contract review tasks are moved out of request threads via Celery + Redis.
+
+- **Offline evaluation baseline (LLM-as-a-Judge)**  
+  `eval/` provides dataset generation, auto-scoring, and Markdown/JSON report output.
 
 ---
 
