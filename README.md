@@ -104,7 +104,7 @@
 > 多角色 AI 对抗推理，还原真实庭审流程，直观感受司法推演全过程。
 
 <p align="center">
-  <img src="showcase/screenshots/mock-court.gif" alt="模拟法庭演示" width="100%" />
+  <img src="showcase/screenshots/mock-court.png" alt="模拟法庭演示" width="100%" />
 </p>
 
 ---
