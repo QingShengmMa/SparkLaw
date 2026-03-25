@@ -311,7 +311,7 @@ async def court_debate(
     x_api_base_url: Optional[str] = Header(default=None),
     x_api_model: Optional[str] = Header(default=None),
 ):
-    custom_config = {"api_key": x_api_key, "base_url": x_api_base_url, "model": x_api_model} if x_api_key else None
+    _ = (x_api_key, x_api_base_url, x_api_model)
 
     async def generate():
         try:
@@ -324,7 +324,7 @@ async def court_debate(
             if auto_defendant:
                 yield f"data: {json.dumps({'type': 'log', 'message': '未检测到被告证据，SparkLaw 已自动补充被告可能证据。'}, ensure_ascii=False)}\n\n"
 
-            async for event in agent.run_stream(
+            async for event in agent.stream(
                 case_description=case_description,
                 plaintiff_name=request.plaintiff_name or "原告",
                 defendant_name=request.defendant_name or "被告",
