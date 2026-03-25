@@ -3,86 +3,95 @@
 
 # SparkLaw
 
-**开源 AI 法律智能体（Legal Agent）**
-
-让法律服务触手可及：**普法问答 · 法律工具 · 模拟法庭**
-
-[English](./README_EN.md) · 中文
+### 开源 AI 法律智能体
 
 <p>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-0ea5e9.svg" alt="MIT License" /></a>
   <a href="https://github.com/QingShengmMa/SparkLaw/pulls"><img src="https://img.shields.io/badge/PRs-Welcome-22c55e.svg" alt="PRs Welcome" /></a>
   <a href="https://github.com/QingShengmMa/SparkLaw/stargazers"><img src="https://img.shields.io/github/stars/QingShengmMa/SparkLaw?style=social" alt="GitHub Stars" /></a>
-  <a href="https://github.com/QingShengmMa/SparkLaw/issues"><img src="https://img.shields.io/github/issues/QingShengmMa/SparkLaw" alt="Issues" /></a>
+  <a href="https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white"><img src="https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white" alt="FastAPI" /></a>
+  <a href="https://img.shields.io/badge/Next.js-Frontend-000000?logo=nextdotjs"><img src="https://img.shields.io/badge/Next.js-Frontend-000000?logo=nextdotjs" alt="Next.js" /></a>
 </p>
+
+English · [中文](./README.md)
 </div>
 
----
-
-## 界面展示
-
-### 1) 首页（Landing）
-
 <p align="center">
-  <img src="showcase/screenshots/landing.png" alt="SparkLaw Landing" width="92%" />
-</p>
-
-### 2) 普法问答
-
-<p align="center">
-  <img src="showcase/screenshots/legal-chat.png" alt="SparkLaw Legal Chat" width="92%" />
-</p>
-
-### 3) 合同审查
-
-<p align="center">
-  <img src="showcase/screenshots/contract-review.png" alt="SparkLaw Contract Review" width="92%" />
-</p>
-
-### 4) 法律计算器
-
-<p align="center">
-  <img src="showcase/screenshots/legal-calculator.png" alt="SparkLaw Legal Calculator" width="92%" />
-</p>
-
-### 5) 文书起草
-
-<p align="center">
-  <img src="showcase/screenshots/document-drafting.png" alt="SparkLaw Document Drafting" width="92%" />
-</p>
-
-### 模拟法庭（GIF）
-
-<p align="center">
-  <img src="showcase/gifs/mock-court.gif" alt="SparkLaw Mock Court GIF" width="92%" />
+  <img src="showcase/gifs/mock-court.gif" alt="SparkLaw Hero - Mock Court" width="100%" />
 </p>
 
 ---
 
-## 核心功能
+## 简介
 
-- **普法问答**：面向中文法律场景的多轮对话与法律检索辅助。
-- **法律工具**：合同审查、文书起草、诉讼费与赔偿金等结构化工具。
-- **模拟法庭**：原告/被告/法官多角色推演与庭审复盘。
+SparkLaw 是一个面向中文法律场景的开源 AI 系统，聚焦“法律问答、结构化法律工具、模拟法庭推演”三条核心链路。  
+它通过大模型 + RAG + 流式交互，将法律知识检索、案件分析和对抗式论证整合为一个可落地的开发者项目。  
+目标不是堆砌概念，而是提供可运行、可扩展、可二次开发的开源法律 AI 基础设施。
 
 ---
 
-## 快速开始
+## ✨ 核心特性矩阵
 
-### 1) 环境要求
-- Python 3.10+
-- Node.js 18+
-- npm 9+
-- Redis（可选，用于异步任务）
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/legal-chat.png" alt="Legal Chat" width="100%" />
+      <b>普法问答</b><br>
+      支持多轮上下文、流式响应与会话记忆，适合法律咨询、条文解释与场景化问答。
+    </td>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/contract-review.png" alt="Contract Review" width="100%" />
+      <b>合同审查</b><br>
+      基于结构化流程识别风险条款，输出风险等级、问题分析与可执行修改建议。
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/legal-calculator.png" alt="Legal Calculator" width="100%" />
+      <b>法律计算器</b><br>
+      覆盖诉讼费、补偿金、利息等常用计算场景，参数化输入、结果可追溯。
+    </td>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/document-drafting.png" alt="Document Drafting" width="100%" />
+      <b>文书起草</b><br>
+      基于模板与指令生成文书草稿，支持 AI 续写、改写与法律表达优化。
+    </td>
+  </tr>
+</table>
 
-### 2) 克隆项目
+---
+
+## 🧱 技术架构
+
+- ⚛️ **Frontend**: Next.js 16, TypeScript, Tailwind CSS  
+- ⚡ **Backend**: FastAPI, Pydantic, SSE  
+- 🦜 **AI / LLM Orchestration**: LangChain, LangGraph, ReAct  
+- 🗄️ **Infrastructure**: ChromaDB, Redis, Celery
+
+---
+
+## 🚀 快速开始
+
+### 1) 克隆项目
 
 ```bash
 git clone https://github.com/QingShengmMa/SparkLaw.git
 cd SparkLaw
 ```
 
-### 3) 启动后端（FastAPI）
+### 2) 配置环境变量
+
+```bash
+# backend
+cp .env.example .env
+
+# frontend
+cd frontend
+cp .env.local.example .env.local
+cd ..
+```
+
+### 3) 启动后端（Python / FastAPI）
 
 ```bash
 python -m venv venv
@@ -92,95 +101,49 @@ venv\Scripts\activate
 # source venv/bin/activate
 
 pip install -r requirements.txt
-cp .env.example .env
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 4) 启动前端（Next.js）
+### 4) 启动前端（Node / Next.js）
 
 ```bash
 cd frontend
 npm install
-cp .env.local.example .env.local
 npm run dev
 ```
 
 访问：`http://localhost:3000`
 
-### 5) 可选：启动异步 Worker
+### 5) （可选）启动异步 Worker
 
 ```bash
 celery -A app.workers.celery_app worker --loglevel=info
 ```
 
----
-
-## 环境变量（最小示例）
-
-后端 `.env`：
-
-```bash
-OPENAI_API_KEY=sk-xxx
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-4o-mini
-REDIS_URL=redis://localhost:6379/0
-```
-
-前端 `frontend/.env.local`：
-
-```bash
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
----
-
-## 技术栈
-
-| 层 | 技术 |
-|---|---|
-| Frontend | Next.js 16, TypeScript, Tailwind CSS |
-| Backend | FastAPI, Pydantic, SSE |
-| Agent / Orchestration | LangChain, LangGraph |
-| Retrieval | ChromaDB, RAG, Reranker |
-| Async | Celery, Redis |
-
----
-
-## 项目结构（简版）
+### 6) 项目结构（极简）
 
 ```text
 SparkLaw/
-├─ app/                          # FastAPI 后端
-│  ├─ api/v1/routes/             # 路由
-│  ├─ services/                  # 业务服务（审查/法庭/问答）
-│  ├─ tools/calculators/         # 法律计算器策略
-│  └─ orchestration/workflows/   # LangGraph 工作流
-├─ frontend/                     # Next.js 前端
-│  └─ src/app/                   # 页面路由
-├─ showcase/                     # README 展示素材
-├─ README.md
-└─ README_EN.md
+├─ app/                    # FastAPI backend
+├─ frontend/               # Next.js frontend
+├─ showcase/               # README assets
+├─ requirements.txt
+└─ README.md
 ```
 
 ---
 
-## 贡献指南
+## 🤝 Contributing
 
-欢迎 Issue 与 PR！
+欢迎 Issue 与 PR。建议在提交前附上：变更说明、测试方式、关键截图（如涉及 UI）。  
+详细规则见 [`CONTRIBUTING.md`](./CONTRIBUTING.md)。
 
-1. Fork 本仓库
-2. 新建分支：`feat/xxx` 或 `fix/xxx`
-3. 提交并推送
-4. 发起 Pull Request
+## 📄 License
 
-详细说明：`CONTRIBUTING.md`
+本项目基于 [MIT License](./LICENSE) 开源。
 
 ---
 
-## License
-
-本项目采用 [MIT License](./LICENSE)。
-
 <div align="center">
-如果这个项目对你有帮助，欢迎点一个 ⭐
+  <b>如果 SparkLaw 对你有帮助，欢迎点一个 ⭐ Star。</b>
 </div>

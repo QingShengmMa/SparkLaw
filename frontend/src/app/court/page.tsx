@@ -81,6 +81,7 @@ function SetupView({ caseDesc, setCaseDesc, userRole, setUserRole, evidence, add
         </section>
         <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center"><FileSearch className="w-5 h-5 mr-2 text-blue-600"/> 2. 梳理双方证据</h2>
+          <p className="text-xs text-slate-500 mb-4">若未为任一方添加证据，SparkLaw 将自动生成该方可能存在的证据，帮助你快速完成庭审推演。</p>
           <div className="grid grid-cols-2 gap-8">
             {(['plaintiff','defendant'] as const).map(side => (
               <div key={side}>
@@ -343,10 +344,26 @@ export default function CourtPage() {
       .filter(e => e.category.trim() || e.content.trim())
       .map(e => `${e.category || '未命名证据'}：${e.content || '（无具体说明）'}`)
       .join('；');
+    const humanEvidence = [
+      ...evidence.plaintiff
+        .filter(e => e.category.trim() || e.content.trim())
+        .map((e, idx) => ({
+          party: 'plaintiff' as const,
+          name: e.category.trim() || `原告证据${idx + 1}`,
+          desc: e.content.trim() || '（无具体说明）',
+        })),
+      ...evidence.defendant
+        .filter(e => e.category.trim() || e.content.trim())
+        .map((e, idx) => ({
+          party: 'defendant' as const,
+          name: e.category.trim() || `被告证据${idx + 1}`,
+          desc: e.content.trim() || '（无具体说明）',
+        })),
+    ];
     const full = `${caseDesc}\n[原告证据]${pEv || '无'}\n[被告证据]${dEv || '无'}\n[原告风格]${aiPersonas.plaintiff}\n[被告风格]${aiPersonas.defendant}\n[法官风格]${aiPersonas.judge}`;
     try {
       await streamCourtDebate(
-        { case_description: full, strategy: 'aggressive', plaintiff_name: `AI原告(${aiPersonas.plaintiff})`, defendant_name: `AI被告(${aiPersonas.defendant})` },
+        { case_description: full, strategy: 'aggressive', plaintiff_name: `AI原告(${aiPersonas.plaintiff})`, defendant_name: `AI被告(${aiPersonas.defendant})`, human_evidence: humanEvidence },
         (ev: CourtSSEEvent) => {
           if (ev.type === 'error') { setError(ev.message || '庭审出错'); setIsStreaming(false); return; }
           if (ev.type === 'verdict') {

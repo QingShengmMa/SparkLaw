@@ -39,6 +39,71 @@ class CourtDebateRequest(BaseModel):
     human_evidence: Optional[list] = Field(default=None, description="人工证据列表")
 
 
+def _auto_fill_party_evidence(human_evidence: Optional[list]) -> tuple[list, bool, bool]:
+    evidence = list(human_evidence or [])
+
+    def _party_of(item: Any) -> str:
+        return str((item or {}).get("party") or "").strip().lower()
+
+    has_plaintiff = any(_party_of(item) == "plaintiff" for item in evidence)
+    has_defendant = any(_party_of(item) == "defendant" for item in evidence)
+
+    if not has_plaintiff:
+        evidence.extend([
+            {
+                "id": "auto_plaintiff_1",
+                "party": "plaintiff",
+                "name": "原告主张沟通记录",
+                "desc": "可能包括聊天记录、邮件或函件，用于证明原告曾明确提出主张并通知被告。",
+            },
+            {
+                "id": "auto_plaintiff_2",
+                "party": "plaintiff",
+                "name": "原告履约或付款凭证",
+                "desc": "可能包括转账记录、收据、合同附件等，用于证明原告已履行相应义务或发生实际损失。",
+            },
+        ])
+
+    if not has_defendant:
+        evidence.extend([
+            {
+                "id": "auto_defendant_1",
+                "party": "defendant",
+                "name": "被告抗辩事实材料",
+                "desc": "可能包括考勤记录、业务日志、履约记录等，用于支撑被告对关键事实的抗辩。",
+            },
+            {
+                "id": "auto_defendant_2",
+                "party": "defendant",
+                "name": "被告制度与告知文件",
+                "desc": "可能包括制度公告、通知记录、签收凭据等，用于证明被告已履行管理或告知义务。",
+            },
+        ])
+
+    return evidence, (not has_plaintiff), (not has_defendant)
+
+
+def _build_case_description_with_evidence(case_description: str, evidence: list) -> str:
+    plaintiff_lines = [
+        f"- {item.get('name', '未命名证据')}：{item.get('desc', '')}"
+        for item in evidence
+        if str(item.get("party") or "").strip().lower() == "plaintiff"
+    ]
+    defendant_lines = [
+        f"- {item.get('name', '未命名证据')}：{item.get('desc', '')}"
+        for item in evidence
+        if str(item.get("party") or "").strip().lower() == "defendant"
+    ]
+
+    return (
+        f"{case_description}\n\n"
+        "[原告证据清单]\n"
+        + ("\n".join(plaintiff_lines) if plaintiff_lines else "- 无")
+        + "\n\n[被告证据清单]\n"
+        + ("\n".join(defendant_lines) if defendant_lines else "- 无")
+    )
+
+
 class ContractReviewStreamRequest(BaseModel):
     contract_id: Optional[str] = Field(default=None, description="已上传合同的 contract_id")
     contract_text: Optional[str] = Field(default=None, description="直接传入的合同文本")
@@ -251,12 +316,20 @@ async def court_debate(
     async def generate():
         try:
             agent = get_court_agent()
+            merged_evidence, auto_plaintiff, auto_defendant = _auto_fill_party_evidence(request.human_evidence)
+            case_description = _build_case_description_with_evidence(request.case_description, merged_evidence)
+
+            if auto_plaintiff:
+                yield f"data: {json.dumps({'type': 'log', 'message': '未检测到原告证据，SparkLaw 已自动补充原告可能证据。'}, ensure_ascii=False)}\n\n"
+            if auto_defendant:
+                yield f"data: {json.dumps({'type': 'log', 'message': '未检测到被告证据，SparkLaw 已自动补充被告可能证据。'}, ensure_ascii=False)}\n\n"
+
             async for event in agent.run_stream(
-                case_description=request.case_description,
+                case_description=case_description,
                 plaintiff_name=request.plaintiff_name or "原告",
                 defendant_name=request.defendant_name or "被告",
                 strategy=request.strategy or "aggressive",
-                human_evidence=request.human_evidence or [],
+                human_evidence=merged_evidence,
                 custom_config=custom_config,
             ):
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"

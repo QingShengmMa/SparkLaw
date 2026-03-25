@@ -109,14 +109,23 @@ class CourtDebateAgent:
 
     def _create_checkpointer(self):
         try:
+            from langgraph.checkpoint.base import BaseCheckpointSaver
             from langgraph.checkpoint.redis.aio import AsyncRedisSaver
-            saver = AsyncRedisSaver.from_conn_string(settings.REDIS_URL)
-            try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(self._setup_async_checkpointer(saver))
-            except RuntimeError:
-                asyncio.run(self._setup_async_checkpointer(saver))
-            return saver
+
+            candidate = AsyncRedisSaver.from_conn_string(settings.REDIS_URL)
+            if not isinstance(candidate, BaseCheckpointSaver):
+                raise TypeError(f"Invalid redis checkpointer type: {type(candidate).__name__}")
+
+            setup = getattr(candidate, "setup", None)
+            if callable(setup):
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(setup())
+                except RuntimeError:
+                    asyncio.run(setup())
+
+            app_logger.info(f"✅ CourtDebateAgent Checkpointer 使用 Redis: {settings.REDIS_URL}")
+            return candidate
         except Exception as e:
             app_logger.warning(f"CourtDebateAgent Redis Checkpointer 不可用，回退 MemorySaver: {str(e)}")
             return MemorySaver()

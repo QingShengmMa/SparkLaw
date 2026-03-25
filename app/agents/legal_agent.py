@@ -94,25 +94,17 @@ class LegalAgentService:
 
     def _create_checkpointer(self):
         try:
+            from langgraph.checkpoint.base import BaseCheckpointSaver
             from langgraph.checkpoint.memory import MemorySaver
             try:
                 from langgraph.checkpoint.redis.aio import AsyncRedisSaver
-                # AsyncRedisSaver.from_conn_string returns an async context manager
-                # in newer langgraph-checkpoint-redis versions; we must use the
-                # synchronous constructor or fall back to MemorySaver.
-                # Try the sync constructor first.
-                if hasattr(AsyncRedisSaver, 'from_conn_string'):
-                    # Check if it returns a context manager (not a real saver)
-                    import inspect
-                    candidate = AsyncRedisSaver.from_conn_string(settings.REDIS_URL)
-                    if inspect.isasyncgen(candidate) or hasattr(candidate, '__aenter__'):
-                        # It's an async context manager — cannot use in __init__
-                        raise TypeError("AsyncRedisSaver.from_conn_string returns an async context manager")
-                    saver = candidate
-                else:
-                    saver = AsyncRedisSaver(settings.REDIS_URL)
+
+                candidate = AsyncRedisSaver.from_conn_string(settings.REDIS_URL)
+                if not isinstance(candidate, BaseCheckpointSaver):
+                    raise TypeError(f"Invalid redis checkpointer type: {type(candidate).__name__}")
+
                 app_logger.info(f"✅ LangGraph Checkpointer 使用 Redis: {settings.REDIS_URL}")
-                return saver
+                return candidate
             except Exception as redis_err:
                 app_logger.warning(f"⚠️ Redis Checkpointer 不可用，回退 MemorySaver: {str(redis_err)}")
                 return MemorySaver()
