@@ -25,13 +25,80 @@
 
 ## 📌 项目简介
 
-`SparkLaw` 是一个聚焦中文法律场景的开源 AI 项目，围绕三类高价值工作流构建：
+`SparkLaw` 是一个聚焦中文法律场景的开源 AI 项目，覆盖「问」「用」「演」三大核心场景：**问**——随时随地咨询专业法律问题；**用**——合同审查、费用计算、文书起草一站直达；**演**——以多角色 AI 模拟真实庭审对抗，直观感受司法推理全过程。项目目标是提供一套**可运行、可扩展、可二次开发**的法律 AI 工程骨架，而不仅是一个演示页面。
 
-- **法律问答（Legal Chat）**：多轮上下文、流式回复、会话记忆
-- **合同审查（Contract Review）**：结构化风险识别 + 修改建议
-- **模拟法庭（Mock Court）**：多角色对抗推理 + 流式庭审过程
+---
 
-项目目标是提供一套**可运行、可扩展、可二次开发**的法律 AI 工程骨架，而不仅是一个演示页面。
+## 🖼️ 功能预览
+
+### 问 · 普法问答
+
+> 多轮上下文、流式回复、会话记忆，随时随地获得专业法律解答。
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/legal-chat.png" alt="Legal Chat - 问答界面" width="100%" />
+      <b>问答界面</b>
+    </td>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/legal-chat-result.png" alt="Legal Chat - 问答结果" width="100%" />
+      <b>问答结果</b>
+    </td>
+  </tr>
+</table>
+
+---
+
+### 用 · 法律工具
+
+> 合同审查、法律计算器、文书起草——高频法律事务，一站直达。
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/contract-review.png" alt="合同审查" width="100%" />
+      <b>合同审查</b><br />
+      对合同条款进行结构化风险识别并输出可执行的修改建议。
+    </td>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/contract-review-result.png" alt="合同审查结果" width="100%" />
+      <b>合同审查 · 结果详情</b>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/legal-calculator.png" alt="法律计算器" width="100%" />
+      <b>法律计算器</b><br />
+      覆盖常见法律费用与赔偿计算场景，快速得到可追溯结果。
+    </td>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/legal-calculator-result.png" alt="法律计算器结果" width="100%" />
+      <b>法律计算器 · 计算结果</b>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/document-drafting.png" alt="文书起草" width="100%" />
+      <b>文书起草</b><br />
+      根据案情自动生成规范化法律文书草稿并支持后续润色。
+    </td>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/document-drafting-result.png" alt="文书起草结果" width="100%" />
+      <b>文书起草 · 生成结果</b>
+    </td>
+  </tr>
+</table>
+
+---
+
+### 演 · 模拟法庭
+
+> 多角色 AI 对抗推理，还原真实庭审流程，直观感受司法推演全过程。
+
+<p align="center">
+  <img src="showcase/screenshots/mock-court.gif" alt="模拟法庭演示" width="100%" />
+</p>
 
 ---
 
@@ -104,37 +171,6 @@ SparkLaw/
 3. `services` 触发对应工作流（问答、审查、法庭、工具）
 4. `agents + knowledge + tools` 完成推理、检索与计算
 5. 结果以结构化 JSON 或流式事件返回前端
-
----
-
-## 🖼️ 功能预览
-
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="showcase/screenshots/legal-chat.png" alt="Legal Chat" width="100%" />
-      <b>法律问答</b><br />
-      面向法律咨询场景提供连续对话与流式答复，支持多轮追问。
-    </td>
-    <td width="50%" valign="top">
-      <img src="showcase/screenshots/contract-review.png" alt="Contract Review" width="100%" />
-      <b>合同审查</b><br />
-      对合同条款进行结构化风险识别并输出可执行的修改建议。
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="showcase/screenshots/legal-calculator.png" alt="Legal Calculator" width="100%" />
-      <b>法律计算器</b><br />
-      覆盖常见法律费用与赔偿计算场景，快速得到可追溯结果。
-    </td>
-    <td width="50%" valign="top">
-      <img src="showcase/screenshots/document-drafting.png" alt="Document Drafting" width="100%" />
-      <b>文书起草</b><br />
-      根据案情自动生成规范化法律文书草稿并支持后续润色。
-    </td>
-  </tr>
-</table>
 
 ---
 

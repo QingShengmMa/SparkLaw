@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
-  Scale, Gavel, Users, User, Shield, Zap,
+  Scale, Gavel, Users, Shield, Zap,
   MessageSquare, Plus, Trash2, ArrowLeft, Award,
   Clock, FileSearch, Target, CheckCircle2,
   AlertCircle, Settings2,
@@ -10,13 +10,27 @@ import {
 } from 'lucide-react';
 import { streamCourtDebate, CourtSSEEvent } from '@/lib/api';
 
+// 后端新协议扩展类型
+interface CourtChunkEvent {
+  type: 'new_message' | 'chunk' | 'result' | 'evidence_list' | 'law_list' | 'evidence_reference' | 'law_reference' | 'thread';
+  msg_id?: string;
+  node?: string;
+  role?: string;
+  role_key?: string;
+  phase?: string;
+  content?: string;
+  result?: {
+    transcript?: Array<{ role: string; role_key: string; phase: string; content: string }>;
+    verdict?: string;
+    plaintiff_win_rate?: number;
+    defendant_win_rate?: number;
+  };
+}
+type AnyCourtEvent = CourtSSEEvent | CourtChunkEvent;
+
 type View = 'setup' | 'live' | 'review';
 type UserRole = 'plaintiff' | 'defendant' | 'audience';
-interface EvidenceItem {
-  id: number;
-  category: string;
-  content: string;
-}
+interface EvidenceItem { id: number; category: string; content: string; }
 interface AiPersonas { plaintiff: string; defendant: string; judge: string; }
 interface ChatMsg {
   role: 'judge' | 'plaintiff' | 'defendant' | 'system' | 'user';
@@ -37,7 +51,6 @@ const CASE_EXAMPLES = [
   { label: '租赁纠纷', text: '房东租期未满以装修自住为由要求租客7日内搬离，租客拒绝，房东切断水电逼迫搬离。' },
 ];
 
-// ── SetupView ──────────────────────────────────────────────────────────────
 function SetupView({ caseDesc, setCaseDesc, userRole, setUserRole, evidence, addEv, updEv, delEv, aiPersonas, setAiPersonas, onStart }: {
   caseDesc: string; setCaseDesc: (v: string) => void;
   userRole: UserRole; setUserRole: (v: UserRole) => void;
@@ -95,20 +108,8 @@ function SetupView({ caseDesc, setCaseDesc, userRole, setUserRole, evidence, add
                       <div className="flex justify-end mb-2">
                         <button onClick={() => delEv(side,ev.id)} className="text-slate-300 hover:text-red-400 transition"><Trash2 className="w-4 h-4"/></button>
                       </div>
-                      <input
-                        type="text"
-                        value={ev.category}
-                        placeholder="证据类别或名称 (如：聊天记录截图 / 劳动合同)"
-                        onChange={e => updEv(side,ev.id,{ category: e.target.value })}
-                        className="w-full text-sm p-2.5 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none transition mb-2"
-                      />
-                      <textarea
-                        value={ev.content}
-                        rows={3}
-                        placeholder="证据的具体内容与证明目的..."
-                        onChange={e => updEv(side,ev.id,{ content: e.target.value })}
-                        className="w-full text-sm p-2.5 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none resize-y transition"
-                      />
+                      <input type="text" value={ev.category} placeholder="证据类别或名称 (如：聊天记录截图 / 劳动合同)" onChange={e => updEv(side,ev.id,{ category: e.target.value })} className="w-full text-sm p-2.5 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none transition mb-2"/>
+                      <textarea value={ev.content} rows={3} placeholder="证据的具体内容与证明目的..." onChange={e => updEv(side,ev.id,{ content: e.target.value })} className="w-full text-sm p-2.5 bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none resize-y transition"/>
                     </div>
                   ))}
                 </div>
@@ -135,7 +136,6 @@ function SetupView({ caseDesc, setCaseDesc, userRole, setUserRole, evidence, add
   );
 }
 
-// ── LiveView placeholder ────────────────────────────────────────────────────
 function LiveView(props: {
   caseDesc: string; userRole: UserRole; chatHistory: ChatMsg[];
   chatEndRef: React.RefObject<HTMLDivElement | null>; isStreaming: boolean;
@@ -161,7 +161,8 @@ function LiveView(props: {
         </div>
         <button onClick={onEndReview} className="text-sm flex items-center text-blue-600 font-medium hover:bg-blue-50 px-4 py-2 rounded-lg transition"><Award className="w-4 h-4 mr-1"/> 结束并复盘</button>
       </header>
-      <div className="flex-1 flex overflow-hidden"><aside className="w-60 bg-white border-r border-slate-200 p-4 overflow-y-auto hidden lg:flex flex-col gap-3 shrink-0">
+      <div className="flex-1 flex overflow-hidden">
+        <aside className="w-60 bg-white border-r border-slate-200 p-4 overflow-y-auto hidden lg:flex flex-col gap-3 shrink-0">
           <h3 className="text-xs font-bold text-slate-600 flex items-center"><FileSearch className="w-4 h-4 mr-1.5 text-blue-500"/>质证看板</h3>
           {evidence.plaintiff.filter(e => e.category || e.content).slice(0,3).map((ev,i) => (
             <div key={i} className="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
@@ -249,12 +250,12 @@ function LiveView(props: {
             <h4 className="text-xs font-bold text-blue-800 mb-2 flex items-center"><Zap className="w-3 h-3 mr-1 text-orange-500"/>战术建议</h4>
             <p className="text-xs text-blue-700 leading-relaxed">{userRole==='defendant'?'建议核查原告证据关联性，从程序瑕疵角度提出质疑，准备替代性解释。':'建议强调证据链完整性，引用具体法条支撑主张。'}</p>
           </div>
-        </aside></div>
+        </aside>
+      </div>
     </div>
   );
 }
 
-// ── ReviewView placeholder ───────────────────────────────────────────────────
 function ReviewView({ reviewData, onReset }: { reviewData: ReviewData | null; onReset: () => void }) {
   const rd = reviewData;
   return (
@@ -284,149 +285,4 @@ function ReviewView({ reviewData, onReset }: { reviewData: ReviewData | null; on
               <h2 className="text-base font-bold text-slate-800 mb-3 flex items-center"><Gavel className="w-5 h-5 mr-2 text-blue-600"/>裁判综述</h2>
               <p className="text-sm text-slate-600 leading-relaxed">{rd.summary}</p>
             </section>
-            <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-              <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center"><Star className="w-5 h-5 mr-2 text-amber-500"/>关键点分析</h2>
-              <div className="space-y-3">
-                {rd.keyPoints.map((pt,i) => (
-                  <div key={i} className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <CheckCircle2 className="w-4 h-4 text-blue-500 mt-0.5 shrink-0"/>
-                    <span className="text-sm text-slate-700">{pt}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </>
-        )}
-        {!rd && <p className="text-center text-slate-400 text-sm">复盘数据生成中，请稍候...</p>}
-        <div className="text-center pt-4 pb-10">
-          <button onClick={onReset} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md transition flex items-center mx-auto">
-            <Gavel className="w-4 h-4 mr-2"/> 重新开庭
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default function CourtPage() {
-  const [view, setView] = useState<View>('setup');
-  const [userRole, setUserRole] = useState<UserRole>('defendant');
-  const [caseDesc, setCaseDesc] = useState('');
-  const [evidence, setEvidence] = useState<{ plaintiff: EvidenceItem[]; defendant: EvidenceItem[] }>({
-    plaintiff: [{ id: 1, category: '', content: '' }],
-    defendant: [{ id: 2, category: '', content: '' }],
-  });
-  const [aiPersonas, setAiPersonas] = useState<AiPersonas>({ plaintiff: '激进攻击型', defendant: '保守防守型', judge: '严厉追问型' });
-  const [chatHistory, setChatHistory] = useState<ChatMsg[]>([]);
-  const [inputText, setInputText] = useState('');
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [reviewData, setReviewData] = useState<ReviewData | null>(null);
-  const [error, setError] = useState('');
-  const [scores, setScores] = useState({ statute: 0, logic: 0, jury: 0 });
-  const abortRef = useRef<AbortController | null>(null);
-  const chatEndRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatHistory]);
-
-  const addEv = (s: 'plaintiff' | 'defendant') => setEvidence(p => ({ ...p, [s]: [...p[s], { id: Date.now(), category: '', content: '' }] }));
-  const updEv = (s: 'plaintiff' | 'defendant', id: number, patch: Partial<EvidenceItem>) => setEvidence(p => ({ ...p, [s]: p[s].map(e => e.id === id ? { ...e, ...patch } : e) }));
-  const delEv = (s: 'plaintiff' | 'defendant', id: number) => setEvidence(p => ({ ...p, [s]: p[s].filter(e => e.id !== id) }));
-
-  const handleStart = useCallback(async () => {
-    setView('live'); setIsStreaming(true); setError(''); setChatHistory([]);
-    setScores({ statute: 0, logic: 0, jury: 0 });
-    abortRef.current = new AbortController();
-    const pEv = evidence.plaintiff
-      .filter(e => e.category.trim() || e.content.trim())
-      .map(e => `${e.category || '未命名证据'}：${e.content || '（无具体说明）'}`)
-      .join('；');
-    const dEv = evidence.defendant
-      .filter(e => e.category.trim() || e.content.trim())
-      .map(e => `${e.category || '未命名证据'}：${e.content || '（无具体说明）'}`)
-      .join('；');
-    const humanEvidence = [
-      ...evidence.plaintiff
-        .filter(e => e.category.trim() || e.content.trim())
-        .map((e, idx) => ({
-          party: 'plaintiff' as const,
-          name: e.category.trim() || `原告证据${idx + 1}`,
-          desc: e.content.trim() || '（无具体说明）',
-        })),
-      ...evidence.defendant
-        .filter(e => e.category.trim() || e.content.trim())
-        .map((e, idx) => ({
-          party: 'defendant' as const,
-          name: e.category.trim() || `被告证据${idx + 1}`,
-          desc: e.content.trim() || '（无具体说明）',
-        })),
-    ];
-    const full = `${caseDesc}\n[原告证据]${pEv || '无'}\n[被告证据]${dEv || '无'}\n[原告风格]${aiPersonas.plaintiff}\n[被告风格]${aiPersonas.defendant}\n[法官风格]${aiPersonas.judge}`;
-    try {
-      await streamCourtDebate(
-        { case_description: full, strategy: 'aggressive', plaintiff_name: `AI原告(${aiPersonas.plaintiff})`, defendant_name: `AI被告(${aiPersonas.defendant})`, human_evidence: humanEvidence },
-        (ev: CourtSSEEvent) => {
-          if (ev.type === 'error') { setError(ev.message || '庭审出错'); setIsStreaming(false); return; }
-          if (ev.type === 'verdict') {
-            setReviewData({ win_probability: ev.win_probability || { plaintiff: 50, defendant: 50 }, summary: ev.content || '庭审结束', keyPoints: ['证据链完整性已分析', '法条适配度已评估', '逻辑一致性已核查'] });
-            setIsStreaming(false);
-          } else if (['opening', 'plaintiff', 'defendant', 'judge', 'log'].includes(ev.type)) {
-            const roleMap: Record<string, ChatMsg['role']> = { opening: 'system', plaintiff: 'plaintiff', defendant: 'defendant', judge: 'judge', log: 'system' };
-            const nameMap: Record<string, string> = { opening: '庭审开始', plaintiff: `AI 原告代理人 (${aiPersonas.plaintiff})`, defendant: `AI 被告代理人 (${aiPersonas.defendant})`, judge: `AI 审判长 (${aiPersonas.judge})`, log: '系统' };
-            setChatHistory(p => [...p, { role: roleMap[ev.type] ?? 'system', name: nameMap[ev.type] ?? '系统', content: ev.content || ev.message || '', isFollowUp: ev.type === 'judge' }]);
-            setScores(p => ({ statute: Math.min(95, p.statute + Math.floor(Math.random() * 10) + 3), logic: Math.min(95, p.logic + Math.floor(Math.random() * 8) + 2), jury: Math.min(95, p.jury + Math.floor(Math.random() * 6) + 2) }));
-          }
-        },
-        abortRef.current.signal,
-      );
-    } catch (e) {
-      if ((e as Error).name !== 'AbortError') setError(e instanceof Error ? e.message : '庭审失败');
-      setIsStreaming(false);
-    }
-  }, [caseDesc, evidence, aiPersonas]);
-
-  const handleSpeak = () => {
-    if (!inputText.trim()) return;
-    const label = userRole === 'plaintiff' ? '原告（您）' : userRole === 'defendant' ? '被告（您）' : '旁听（您）';
-    setChatHistory(p => [...p, { role: 'user', name: label, content: inputText.trim() }]);
-    setInputText('');
-  };
-
-  const handleEndReview = () => {
-    abortRef.current?.abort(); setIsStreaming(false);
-    if (!reviewData) setReviewData({ win_probability: { plaintiff: 50, defendant: 50 }, summary: '庭审提前结束。', keyPoints: ['请重新开庭获取完整复盘'] });
-    setView('review');
-  };
-
-  const handleReset = () => {
-    abortRef.current?.abort();
-    setView('setup'); setChatHistory([]); setIsStreaming(false);
-    setReviewData(null); setError(''); setScores({ statute: 0, logic: 0, jury: 0 }); setCaseDesc('');
-  };
-
-  return (
-    <div className="flex flex-1 min-w-0 flex-col bg-slate-50 font-sans text-slate-900 overflow-y-auto">
-      {error && (
-        <div className="fixed top-4 right-4 z-50 flex items-center gap-3 bg-white border border-red-100 text-red-600 rounded-2xl px-5 py-3 text-sm shadow-lg">
-          <AlertCircle size={15}/> {error}
-          <button onClick={() => setError('')} className="ml-2 opacity-60 hover:opacity-100">✕</button>
-        </div>
-      )}
-      {view === 'setup' && <SetupView
-        caseDesc={caseDesc} setCaseDesc={setCaseDesc}
-        userRole={userRole} setUserRole={setUserRole}
-        evidence={evidence} addEv={addEv} updEv={updEv} delEv={delEv}
-        aiPersonas={aiPersonas} setAiPersonas={setAiPersonas}
-        onStart={handleStart}
-      />}
-      {view === 'live' && <LiveView
-        caseDesc={caseDesc} userRole={userRole}
-        chatHistory={chatHistory} chatEndRef={chatEndRef}
-        isStreaming={isStreaming} scores={scores}
-        inputText={inputText} setInputText={setInputText}
-        evidence={evidence} aiPersonas={aiPersonas}
-        onSpeak={handleSpeak} onBack={() => setView('setup')} onEndReview={handleEndReview}
-      />}
-      {view === 'review' && <ReviewView reviewData={reviewData} onReset={handleReset}/>}
-    </div>
-  );
-}
+            <section className="bg-white  
