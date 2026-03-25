@@ -36,32 +36,26 @@
 
 ---
 
-## 🚀 产品亮点
+## 🧱 技术栈
 
-SparkLaw 不是“只有聊天框”的法律 AI，而是围绕真实法律工作流设计的一体化产品：
-
-- **一站式法律工作台**：问答、审查、起草、庭审推演、计算工具集中在同一产品内
-- **从咨询到落地闭环**：从法律咨询到合同风险识别，再到文书生成与证据评估，减少来回切换
-- **面向中文法律语境优化**：围绕中国常见法律场景组织能力与输出结构
-- **强交互体验**：流式返回、分阶段进度、可追踪步骤，降低“黑箱感”
-- **开发者友好**：模块化后端 + 独立前端，支持本地/云端模型配置，便于二次开发
-
----
-
-## 🧱 技术栈（详细）
-
-| 层级 | 技术 | 说明 |
-|---|---|---|
-| Frontend | Next.js 16 + React 18 + TypeScript | 构建多页面法律产品界面，支持复杂交互与状态管理 |
-| UI & State | Tailwind CSS + Zustand + lucide-react | 实现高效样式组织、全局状态管理与统一图标体系 |
-| Backend API | FastAPI + Pydantic v2 + Uvicorn | 提供高性能 API、严格数据校验与自动化接口契约 |
-| Streaming | SSE (StreamingResponse) | 用于问答、合同审查、模拟法庭、文书起草等流式输出 |
-| Agent Orchestration | LangChain + LangGraph + ReAct | 实现多步骤推理、工具调用与多智能体协作流程 |
-| Retrieval / RAG | ChromaDB + sentence-transformers | 支持法律文本切分、向量检索、语义召回 |
-| Async Tasks | Celery + Redis | 支持耗时任务异步执行与任务状态跟踪 |
-| Document Parsing | PyMuPDF + python-docx + python-multipart | 处理 PDF/DOCX 上传解析与文本抽取 |
-| Quality & Test | pytest + pytest-asyncio + pytest-cov | 覆盖核心接口与关键逻辑，支持异步测试与覆盖率统计 |
-| Deployment | Docker + docker-compose | 本地一键拉起前后端，便于开发与演示 |
+- Python 3.10+
+- FastAPI
+- Pydantic
+- Uvicorn
+- LangChain
+- LangGraph
+- ChromaDB
+- sentence-transformers
+- Celery
+- Redis
+- Next.js 16
+- React 18
+- TypeScript
+- Tailwind CSS
+- Zustand
+- PyMuPDF
+- python-docx
+- Docker / docker-compose
 
 ---
 

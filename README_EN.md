@@ -36,32 +36,26 @@ Developer-friendly by design: modular backend + standalone frontend, with flexib
 
 ---
 
-## 🚀 Product Highlights
+## 🧱 Tech Stack
 
-SparkLaw is not just a chatbot—it is an integrated legal AI product built around real legal workflows:
-
-- **All-in-one legal workspace**: legal chat, review, drafting, mock-court simulation, and calculators in one product
-- **From consultation to execution**: move from legal Q&A to contract risk review and then to drafting/evidence analysis in a single flow
-- **Optimized for Chinese legal context**: capabilities and outputs are structured for common legal scenarios in China
-- **Strong interaction experience**: streaming outputs, staged progress updates, and traceable processing steps reduce black-box feel
-- **Developer-ready architecture**: modular backend + standalone frontend, with flexible local/cloud model configuration
-
----
-
-## 🧱 Tech Stack (Detailed)
-
-| Layer | Technology | Purpose |
-|---|---|---|
-| Frontend | Next.js 16 + React 18 + TypeScript | Builds a multi-page legal product interface with robust interaction patterns |
-| UI & State | Tailwind CSS + Zustand + lucide-react | Enables scalable styling, global state management, and consistent iconography |
-| Backend API | FastAPI + Pydantic v2 + Uvicorn | Delivers high-performance APIs, strict data validation, and typed contracts |
-| Streaming | SSE (StreamingResponse) | Powers streaming UX for legal chat, contract review, mock court, and drafting |
-| Agent Orchestration | LangChain + LangGraph + ReAct | Supports multi-step reasoning, tool calling, and multi-agent collaboration |
-| Retrieval / RAG | ChromaDB + sentence-transformers | Provides legal text chunking, semantic retrieval, and vector search |
-| Async Tasks | Celery + Redis | Handles long-running tasks asynchronously with status tracking |
-| Document Parsing | PyMuPDF + python-docx + python-multipart | Processes uploaded PDF/DOCX files and extracts structured text |
-| Quality & Test | pytest + pytest-asyncio + pytest-cov | Covers core APIs and workflows with async tests and coverage reports |
-| Deployment | Docker + docker-compose | Enables one-command local orchestration for backend/frontend services |
+- Python 3.10+
+- FastAPI
+- Pydantic
+- Uvicorn
+- LangChain
+- LangGraph
+- ChromaDB
+- sentence-transformers
+- Celery
+- Redis
+- Next.js 16
+- React 18
+- TypeScript
+- Tailwind CSS
+- Zustand
+- PyMuPDF
+- python-docx
+- Docker / docker-compose
 
 ---
 
