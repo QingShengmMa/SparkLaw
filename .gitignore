@@ -122,3 +122,12 @@ Thumbs.db
 
 # Private docs
 docs/
+
+# Evaluation artifacts (local only)
+eval/eval_dataset.jsonl
+eval/reports/
+
+# Local runtime/cache artifacts
+.cursor/
+*.local.json
+
