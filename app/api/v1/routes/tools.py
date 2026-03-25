@@ -39,6 +39,10 @@ class CourtDebateRequest(BaseModel):
     human_evidence: Optional[list] = Field(default=None, description="人工证据列表")
 
 
+class CourtRejudgeRequest(CourtDebateRequest):
+    thread_id: Optional[str] = Field(default=None, description="庭审线程ID（可选）")
+
+
 def _auto_fill_party_evidence(human_evidence: Optional[list]) -> tuple[list, bool, bool]:
     evidence = list(human_evidence or [])
 
@@ -306,7 +310,7 @@ async def debate(request: DebateRequest):
 
 @router.post("/debate/court", summary="模拟庭审（流式 SSE）")
 async def court_debate(
-    request: CourtDebateRequest,
+    request: CourtRejudgeRequest,
     x_api_key: Optional[str] = Header(default=None),
     x_api_base_url: Optional[str] = Header(default=None),
     x_api_model: Optional[str] = Header(default=None),
@@ -326,11 +330,11 @@ async def court_debate(
 
             async for event in agent.stream(
                 case_description=case_description,
-                plaintiff_name=request.plaintiff_name or "原告",
-                defendant_name=request.defendant_name or "被告",
+
+
                 strategy=request.strategy or "aggressive",
-                human_evidence=merged_evidence,
-                custom_config=custom_config,
+                human_evidences=merged_evidence,
+
             ):
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as e:
@@ -342,9 +346,34 @@ async def court_debate(
 
 @router.post("/debate/court/rejudge", summary="补充证据重新庭审（流式 SSE）")
 async def court_debate_rejudge(
-    request: CourtDebateRequest,
+    request: CourtRejudgeRequest,
     x_api_key: Optional[str] = Header(default=None),
     x_api_base_url: Optional[str] = Header(default=None),
     x_api_model: Optional[str] = Header(default=None),
 ):
-    return await court_debate(request, x_api_key=x_api_key, x_api_base_url=x_api_base_url, x_api_model=x_api_model) 
+    _ = (x_api_key, x_api_base_url, x_api_model)
+
+    async def generate():
+        try:
+            agent = get_court_agent()
+            merged_evidence, auto_plaintiff, auto_defendant = _auto_fill_party_evidence(request.human_evidence)
+            case_description = _build_case_description_with_evidence(request.case_description, merged_evidence)
+
+            if auto_plaintiff:
+                yield f"data: {json.dumps({'type': 'log', 'message': '未检测到原告证据，SparkLaw 已自动补充原告可能证据。'}, ensure_ascii=False)}\n\n"
+            if auto_defendant:
+                yield f"data: {json.dumps({'type': 'log', 'message': '未检测到被告证据，SparkLaw 已自动补充被告可能证据。'}, ensure_ascii=False)}\n\n"
+
+            async for event in agent.stream(
+                case_description=case_description,
+                strategy=request.strategy or "aggressive",
+                thread_id=request.thread_id,
+                rejudge_only=True,
+                human_evidences=merged_evidence,
+            ):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            app_logger.error(f"重新开庭流式输出错误: {e}")
+            yield f"data: {json.dumps({'type':'error','message':str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream") 

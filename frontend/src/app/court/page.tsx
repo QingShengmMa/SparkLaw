@@ -34,16 +34,15 @@ type UserRole = 'plaintiff' | 'defendant' | 'audience';
 interface EvidenceItem { id: number; category: string; content: string; }
 interface AiPersonas { plaintiff: string; defendant: string; judge: string; }
 interface ChatMsg {
+  msgId?: string;
   role: 'judge' | 'plaintiff' | 'defendant' | 'system' | 'user';
   name: string; content: string; isFollowUp?: boolean;
 }
-interface ReviewData {
-  win_probability: { plaintiff: number; defendant: number };
-  summary: string; keyPoints: string[];
-}
-interface CaseExample {
-  label: string;
-  text: string;
+interface LawRefItem { id: string; title: string; content: string; source?: string; }
+interface EvidenceRefItem { id: string; title: string; content: string; source?: string; }
+interface HoverRefOptions {
+  onRefHover?: (type: '证据' | '法条', value: string) => void;
+  onRefLeave?: () => void;
 }
 
 interface SetupViewProps {
@@ -86,6 +85,88 @@ function extractEvidenceCategory(name: string): string {
 
 function buildEvidenceName(category: string, seq: number): string {
   return `${category}${String(seq).padStart(3, '0')}`;
+}
+
+function toPlainDisplayText(raw: string): string {
+  const cleaned = (raw || '')
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*/g, '')
+    .trim();
+
+  return cleaned
+    .replace(/\s*【/g, '\n【')
+    .replace(/\s*(\d+)[\.、]\s*/g, '\n$1. ')
+    .replace(/([。；;])(?!\n)/g, '$1\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+const TRIAL_STAGES = ['开庭准备', '法庭调查', '举证质证', '法庭辩论', '最后陈述', '评议宣判'] as const;
+type TrialStage = typeof TRIAL_STAGES[number];
+
+function detectTrialStage(text: string): TrialStage | null {
+  const t = toPlainDisplayText(text);
+  if (!t) return null;
+
+  if (/宣布开庭|核对当事人|法庭纪律|案由|开庭/.test(t)) return '开庭准备';
+  if (/法庭调查|诉讼请求|答辩|争议焦点|事实/.test(t)) return '法庭调查';
+  if (/举证|质证|证据|三性|证明力/.test(t)) return '举证质证';
+  if (/法庭辩论|辩论意见|代理意见|辩论阶段/.test(t)) return '法庭辩论';
+  if (/最后陈述|最后意见|补充意见/.test(t)) return '最后陈述';
+  if (/评议|宣判|裁判|判决|本庭认为|裁判结论|verdict/.test(t)) return '评议宣判';
+
+  return null;
+}
+
+function renderReadableMessage(raw: string, options?: HoverRefOptions): React.ReactNode {
+  const text = toPlainDisplayText(raw);
+  if (!text) return null;
+
+  const renderLineWithRefs = (line: string): React.ReactNode[] => {
+    const nodes: React.ReactNode[] = [];
+    const regex = /\[(证据|法条):([^\]]+)\]/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(line)) !== null) {
+      if (match.index > lastIndex) nodes.push(line.slice(lastIndex, match.index));
+      const type = match[1];
+      const value = match[2];
+      nodes.push(
+        <span
+          key={`${type}-${value}-${match.index}`}
+          onMouseEnter={() => options?.onRefHover?.(type as '证据' | '法条', value)}
+          onMouseLeave={() => options?.onRefLeave?.()}
+          className={type === '证据'
+            ? 'inline-flex mx-0.5 px-2 py-0.5 rounded-md text-[11px] font-semibold align-middle bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-pointer hover:bg-emerald-100'
+            : 'inline-flex mx-0.5 px-2 py-0.5 rounded-md text-[11px] font-semibold align-middle bg-indigo-50 text-indigo-700 border border-indigo-200 cursor-pointer hover:bg-indigo-100'}
+        >
+          {type}:{value}
+        </span>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < line.length) nodes.push(line.slice(lastIndex));
+    return nodes;
+  };
+
+  const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
+  return (
+    <div className="space-y-2">
+      {lines.map((line, idx) => {
+        const isPoint = /^\d+\./.test(line);
+        return (
+          <p key={`${idx}-${line.slice(0, 16)}`} className={isPoint ? 'pl-3 border-l-2 border-slate-200' : ''}>
+            {renderLineWithRefs(line)}
+          </p>
+        );
+      })}
+    </div>
+  );
 }
 
 const CASE_EXAMPLES: CaseExample[] = [
@@ -325,8 +406,27 @@ function LiveView(props: {
   onSpeak: () => void; onBack: () => void; onEndReview: () => void;
   leftSidebarOpen: boolean; rightSidebarOpen: boolean;
   onToggleLeftSidebar: () => void; onToggleRightSidebar: () => void;
+  onJumpToMessage: (msgId: string) => void;
+  evidenceRefs: EvidenceRefItem[];
+  lawRefs: LawRefItem[];
+  activeEvidenceId?: string | null;
+  activeLawId?: string | null;
+  onReferenceHover: (type: '证据' | '法条', value: string) => void;
+  onReferenceLeave: () => void;
 }) {
-  const { caseDesc, userRole, chatHistory, chatEndRef, isStreaming, scores, inputText, setInputText, evidence, onSpeak, onBack, onEndReview, leftSidebarOpen, rightSidebarOpen, onToggleLeftSidebar, onToggleRightSidebar } = props;
+  const { caseDesc, userRole, chatHistory, chatEndRef, isStreaming, scores, inputText, setInputText, evidence, onSpeak, onBack, onEndReview, leftSidebarOpen, rightSidebarOpen, onToggleLeftSidebar, onToggleRightSidebar, onJumpToMessage, evidenceRefs, lawRefs, activeEvidenceId, activeLawId, onReferenceHover, onReferenceLeave } = props;
+
+  const stageMessageMap = new Map<TrialStage, ChatMsg>();
+  let currentStage: TrialStage = '开庭准备';
+  chatHistory.forEach((m) => {
+    if (m.role !== 'judge') return;
+    const stage = detectTrialStage(m.content);
+    if (!stage) return;
+    currentStage = stage;
+    stageMessageMap.set(stage, m);
+  });
+  const currentStageIndex = TRIAL_STAGES.indexOf(currentStage);
+
   return (
     <div className="flex-1 flex flex-col bg-slate-50 dark:bg-slate-800 overflow-hidden">
       <header className="bg-white dark:bg-slate-900 border-b border-slate-200 px-5 lg:px-6 py-3 flex items-center justify-between shrink-0">
@@ -340,7 +440,7 @@ function LiveView(props: {
                 <span className="text-sm leading-none">{isStreaming ? '🔴' : '🟢'}</span>
               </span>
             </h2>
-            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">当前身份：<strong className="text-blue-600">{userRole==='defendant'?'被告代理人':userRole==='plaintiff'?'原告代理人':'旁听席'}</strong>&nbsp;|&nbsp;法庭调查阶段</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">当前身份：<strong className="text-blue-600">{userRole==='defendant'?'被告代理人':userRole==='plaintiff'?'原告代理人':'旁听席'}</strong>&nbsp;|&nbsp;<strong className="text-blue-600">{currentStage}</strong></div>
           </div>
         </div>
         <button onClick={onEndReview} className="text-sm flex items-center text-blue-600 font-medium hover:bg-blue-50 dark:hover:bg-blue-900/30 px-4 py-2 rounded-lg transition"><Award className="w-4 h-4 mr-1"/> 终止审理并生成复盘</button>
@@ -368,13 +468,25 @@ function LiveView(props: {
             <hr className="border-slate-100"/>
             <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center"><Clock className="w-4 h-4 mr-1.5 text-blue-500"/>审理进程</h3>
             <div className="relative border-l-2 border-slate-100 ml-2 space-y-3 pl-3">
-              {chatHistory.filter(m => m.role==='judge').slice(-4).map((m,i) => (
-                <div key={i} className="relative">
-                  <div className="absolute -left-[17px] top-1 w-2.5 h-2.5 bg-amber-400 rounded-full border-2 border-white"/>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2">{m.content.slice(0,40)}{m.content.length>40?'...':''}</p>
-                </div>
-              ))}
-              {chatHistory.filter(m => m.role==='judge').length===0 && <p className="text-xs text-slate-400 dark:text-slate-500">等待庭审...</p>}
+              {TRIAL_STAGES.map((stage, i) => {
+                const msg = stageMessageMap.get(stage);
+                const reached = i <= currentStageIndex;
+                const active = i === currentStageIndex;
+                return (
+                  <div key={stage} className="relative">
+                    <div className={`absolute -left-[17px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white ${active ? 'bg-blue-500' : reached ? 'bg-amber-400' : 'bg-slate-300'}`}/>
+                    <button
+                      type="button"
+                      disabled={!msg?.msgId}
+                      onClick={() => msg?.msgId && onJumpToMessage(msg.msgId)}
+                      className={`text-left w-full text-xs transition ${msg?.msgId ? 'text-slate-700 dark:text-slate-200 hover:text-blue-600 cursor-pointer' : 'text-slate-400 dark:text-slate-500 cursor-not-allowed'}`}
+                    >
+                      <span className={`font-semibold ${active ? 'text-blue-600' : ''}`}>{stage}</span>
+                      <span className="block mt-0.5 line-clamp-2">{msg ? `${toPlainDisplayText(msg.content).slice(0,38)}${toPlainDisplayText(msg.content).length>38?'...':''}` : '等待该阶段...'}</span>
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </aside>
         ) : (
@@ -387,20 +499,20 @@ function LiveView(props: {
         <main className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-4 lg:p-5 space-y-4 bg-slate-50 dark:bg-slate-800/50 dark:bg-slate-900/40">
             {chatHistory.map((msg,idx) => (
-              <div key={idx} className={`flex flex-col ${msg.role==='system'||msg.role==='judge'?'items-center':msg.role==='plaintiff'?'items-start':'items-end'}`}>
+              <div id={msg.msgId ? `court-msg-${msg.msgId}` : undefined} key={msg.msgId || idx} className={`flex flex-col ${msg.role==='system'||msg.role==='judge'?'items-center':msg.role==='plaintiff'?'items-start':'items-end'}`}>
                 {msg.role==='system' ? (
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800/80">{msg.content}</span>
+                  <div className="text-[10px] text-slate-400 dark:text-slate-500 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800/80">{renderReadableMessage(msg.content)}</div>
                 ) : msg.role==='judge' ? (
                   <div className="max-w-lg flex flex-col items-center">
                     <span className="text-xs text-slate-400 dark:text-slate-500 mb-1 flex items-center"><Gavel className="w-3 h-3 mr-1"/>{msg.name}</span>
                     <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.isFollowUp?'bg-amber-50 text-amber-900 border border-amber-200':'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700'}`}>
-                      {msg.isFollowUp && <span className="font-bold text-amber-700 mr-2">[法官追问]</span>}{msg.content}
+                      {msg.isFollowUp && <span className="font-bold text-amber-700 mr-2">[法官追问]</span>}{renderReadableMessage(msg.content)}
                     </div>
                   </div>
                 ) : (
                   <div className="max-w-lg flex flex-col">
                     <span className={`text-xs text-slate-400 dark:text-slate-500 mb-1 ${msg.role==='user'||msg.role==='defendant'?'text-right mr-1':'ml-1'}`}>{msg.name}</span>
-                    <div className={`px-4 py-3 rounded-2xl text-sm shadow-sm leading-relaxed ${msg.role==='user'?'bg-blue-600 text-white rounded-tr-sm':'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-tl-sm'}`}>{msg.content}</div>
+                    <div className={`px-4 py-3 rounded-2xl text-sm shadow-sm leading-relaxed ${msg.role==='user'?'bg-blue-600 text-white rounded-tr-sm':'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-tl-sm'}`}>{msg.role === 'user' ? msg.content : renderReadableMessage(msg.content)}</div>
                   </div>
                 )}
               </div>
@@ -592,28 +704,69 @@ export default function CourtPage() {
           human_evidence: humanEvidence
         },
         (event: AnyCourtEvent) => {
-          if (event.type === 'new_message' || event.type === 'chunk') {
-            const mappedRole: ChatMsg['role'] =
-              event.role_key === 'judge' || event.role === 'judge'
-                ? 'judge'
-                : event.role_key === 'plaintiff' || event.role === 'plaintiff'
-                  ? 'plaintiff'
-                  : event.role_key === 'defendant' || event.role === 'defendant'
-                    ? 'defendant'
-                    : 'system';
+          const mapRole = (ev: AnyCourtEvent): ChatMsg['role'] => {
+            const roleKey = 'role_key' in ev ? ev.role_key : undefined;
+            const role = ev.role;
+            return roleKey === 'judge' || role === 'judge'
+              ? 'judge'
+              : roleKey === 'plaintiff' || role === 'plaintiff'
+                ? 'plaintiff'
+                : roleKey === 'defendant' || role === 'defendant'
+                  ? 'defendant'
+                  : 'system';
+          };
 
-            const msg: ChatMsg = {
-              role: mappedRole,
-              name: event.role || '系统',
-              content: event.content || ''
-            };
-            setChatHistory(prev => [...prev, msg]);
+          if (event.type === 'new_message') {
+            const mappedRole = mapRole(event);
+            const msgId = 'msg_id' in event ? event.msg_id : undefined;
+            setChatHistory(prev => [
+              ...prev,
+              {
+                msgId: msgId || `msg_${Date.now()}_${prev.length}`,
+                role: mappedRole,
+                name: event.role || '系统',
+                content: '',
+              },
+            ]);
+          } else if (event.type === 'chunk') {
+            const chunkText = event.content || '';
+            if (!chunkText) return;
+
+            setChatHistory(prev => {
+              const msgId = 'msg_id' in event ? event.msg_id : undefined;
+              const next = [...prev];
+
+              if (msgId) {
+                for (let i = next.length - 1; i >= 0; i -= 1) {
+                  if (next[i].msgId === msgId) {
+                    next[i] = { ...next[i], content: (next[i].content || '') + chunkText };
+                    return next;
+                  }
+                }
+              }
+
+              const mappedRole = mapRole(event);
+              if (next.length > 0 && next[next.length - 1].role === mappedRole) {
+                const last = next[next.length - 1];
+                next[next.length - 1] = { ...last, content: (last.content || '') + chunkText };
+                return next;
+              }
+
+              next.push({
+                msgId: msgId || `msg_${Date.now()}_${next.length}`,
+                role: mappedRole,
+                name: event.role || '系统',
+                content: chunkText,
+              });
+              return next;
+            });
           } else if (event.type === 'result') {
             if (event.result?.verdict) {
               setChatHistory(prev => [...prev, {
+                msgId: `msg_${Date.now()}_${prev.length}`,
                 role: 'judge',
                 name: '审判长',
-                content: event.result?.verdict || '本轮庭审阶段结束'
+                content: toPlainDisplayText(event.result?.verdict || '本轮庭审阶段结束')
               }]);
             }
             if (event.result?.plaintiff_win_rate !== undefined && event.result?.defendant_win_rate !== undefined) {
@@ -622,7 +775,7 @@ export default function CourtPage() {
                   plaintiff: event.result.plaintiff_win_rate,
                   defendant: event.result.defendant_win_rate
                 },
-                summary: event.result.verdict || '庭审推演已完成',
+                summary: toPlainDisplayText(event.result.verdict || '庭审推演已完成'),
                 keyPoints: []
               });
             }
@@ -667,9 +820,11 @@ export default function CourtPage() {
     setScores({ statute: 0, logic: 0, jury: 0 });
   }, []);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatHistory]);
+  const handleJumpToMessage = useCallback((msgId: string) => {
+    const el = document.getElementById(`court-msg-${msgId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   return (
     <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-800 dark:bg-slate-950">
@@ -709,6 +864,7 @@ export default function CourtPage() {
           rightSidebarOpen={rightSidebarOpen}
           onToggleLeftSidebar={() => setLeftSidebarOpen(v => !v)}
           onToggleRightSidebar={() => setRightSidebarOpen(v => !v)}
+          onJumpToMessage={handleJumpToMessage}
         />
       )}
       {view === 'review' && (
