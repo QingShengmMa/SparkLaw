@@ -32,34 +32,45 @@
 - **模拟法庭（Mock Court）**：多角色对抗推理 + 流式庭审过程
 
 项目目标是提供一套**可运行、可扩展、可二次开发**的法律 AI 工程骨架，而不仅是一个演示页面。
-开发者友好：模块化后端 + 独立前端，支持本地/云端模型配置，便于二次开发。
 
 ---
 
 ## 🧱 技术栈
 
-- Python 3.10+
-- FastAPI
-- Pydantic
-- Uvicorn
-- LangChain
-- LangGraph
-- ChromaDB
-- sentence-transformers
-- Celery
-- Redis
-- Next.js 16
-- React 18
-- TypeScript
-- Tailwind CSS
-- Zustand
-- PyMuPDF
-- python-docx
-- Docker / docker-compose
+- **后端**：Python 3.10+、FastAPI、Pydantic、Uvicorn
+- **前端**：Next.js 16、React 18、TypeScript、Tailwind CSS、Zustand
+- **AI / 智能体编排**：LangChain、LangGraph
+- **检索与知识库**：ChromaDB、sentence-transformers
+- **异步与任务队列**：Celery、Redis
+- **文档处理**：PyMuPDF、python-docx
+- **部署与环境**：Docker、docker-compose
 
 ---
 
 ## 🏗️ 项目架构（关键模块）
+
+```mermaid
+flowchart LR
+    U[用户 / 浏览器] --> F[Frontend\nNext.js]
+    F -->|REST / SSE| API[FastAPI API 层\napp/api/v1/routes]
+
+    API --> S[服务层\napp/services]
+    API --> A[智能体层\napp/agents]
+
+    S --> K[知识检索层\napp/knowledge]
+    S --> T[工具层\napp/tools/calculators]
+    S --> P[文档解析\nDocument Parser]
+
+    K --> V[(ChromaDB)]
+    A --> LLM[LLM Provider\nOllama / OpenAI-Compatible]
+
+    S --> Q[异步任务\nCelery Worker]
+    Q --> R[(Redis)]
+
+    S --> API
+    API --> F
+```
+
 
 ```text
 SparkLaw/

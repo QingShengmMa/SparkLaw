@@ -38,28 +38,40 @@ Developer-friendly by design: modular backend + standalone frontend, with flexib
 
 ## 🧱 Tech Stack
 
-- Python 3.10+
-- FastAPI
-- Pydantic
-- Uvicorn
-- LangChain
-- LangGraph
-- ChromaDB
-- sentence-transformers
-- Celery
-- Redis
-- Next.js 16
-- React 18
-- TypeScript
-- Tailwind CSS
-- Zustand
-- PyMuPDF
-- python-docx
-- Docker / docker-compose
+- **Backend**: Python 3.10+, FastAPI, Pydantic, Uvicorn
+- **Frontend**: Next.js 16, React 18, TypeScript, Tailwind CSS, Zustand
+- **AI / Agent Orchestration**: LangChain, LangGraph
+- **Retrieval & Knowledge**: ChromaDB, sentence-transformers
+- **Async & Queue**: Celery, Redis
+- **Document Processing**: PyMuPDF, python-docx
+- **Deployment & Runtime**: Docker, docker-compose
 
 ---
 
 ## 🏗️ Project Architecture (Key Modules)
+
+```mermaid
+flowchart LR
+    U[User / Browser] --> F[Frontend\nNext.js]
+    F -->|REST / SSE| API[FastAPI API Layer\napp/api/v1/routes]
+
+    API --> S[Service Layer\napp/services]
+    API --> A[Agent Layer\napp/agents]
+
+    S --> K[Knowledge Retrieval\napp/knowledge]
+    S --> T[Tools\napp/tools/calculators]
+    S --> P[Document Parsing\nDocument Parser]
+
+    K --> V[(ChromaDB)]
+    A --> LLM[LLM Provider\nOllama / OpenAI-Compatible]
+
+    S --> Q[Async Tasks\nCelery Worker]
+    Q --> R[(Redis)]
+
+    S --> API
+    API --> F
+```
+
 
 ```text
 SparkLaw/
