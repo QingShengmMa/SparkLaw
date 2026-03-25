@@ -74,7 +74,7 @@
     </td>
     <td width="50%" valign="top">
       <img src="showcase/screenshots/legal-calculator-result.png" alt="法律计算器结果" width="100%" />
-      <b>法律计算器 · 计算结果</b>
+      <b>法律计算器 · 计算展示</b>
     </td>
   </tr>
   <tr>
