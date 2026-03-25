@@ -57,6 +57,9 @@ class Settings(BaseSettings):
 
     # 向量数据库配置
     CHROMA_PERSIST_DIR: str = "./data/chroma_db"
+    ENABLE_SEMANTIC_MEMORY: bool = True
+    EMBEDDING_MODEL: str = "BAAI/bge-small-zh-v1.5"
+    EMBEDDING_LOCAL_ONLY: bool = False
 
     # Redis / Celery 配置
     REDIS_URL: str = "redis://localhost:6379/0"

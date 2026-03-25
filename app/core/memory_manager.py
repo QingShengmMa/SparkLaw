@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import re
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
@@ -32,9 +32,28 @@ class HybridMemoryManager:
             path=memory_dir,
             settings=ChromaSettings(anonymized_telemetry=False, allow_reset=True),
         )
-        self.embedding_model = SentenceTransformer("BAAI/bge-small-zh-v1.5")
+        self.embedding_model: Optional[SentenceTransformer] = self._create_embedding_model()
 
         self.summary_llm = self._create_summary_llm()
+
+    def _create_embedding_model(self) -> Optional[SentenceTransformer]:
+        """创建向量模型，失败时降级为禁用语义记忆（不阻塞服务启动）。"""
+        if not settings.ENABLE_SEMANTIC_MEMORY:
+            app_logger.info("语义记忆已关闭（ENABLE_SEMANTIC_MEMORY=False）")
+            return None
+
+        model_name = settings.EMBEDDING_MODEL
+        try:
+            model = SentenceTransformer(model_name, local_files_only=settings.EMBEDDING_LOCAL_ONLY)
+            app_logger.info(
+                f"✅ 向量模型加载成功: {model_name} (local_only={settings.EMBEDDING_LOCAL_ONLY})"
+            )
+            return model
+        except Exception as e:
+            app_logger.warning(
+                f"⚠️ 向量模型加载失败，已降级为仅短期+摘要记忆: {str(e)}"
+            )
+            return None
 
     def _create_summary_llm(self):
         """创建低成本摘要模型，失败时回退默认模型。"""
@@ -137,6 +156,9 @@ class HybridMemoryManager:
     ) -> None:
         """异步写入语义记忆。"""
         try:
+            if self.embedding_model is None:
+                return
+
             entities = self.extract_entities(user_question)
             memory_text = (
                 f"用户问题: {user_question}\n"
@@ -166,6 +188,9 @@ class HybridMemoryManager:
     def search_semantic_memory(self, session_id: str, query: str, top_k: int = 3) -> List[str]:
         """检索用户历史语义档案。"""
         try:
+            if self.embedding_model is None:
+                return []
+
             collection = self._get_collection(session_id)
             query_embedding = self.embedding_model.encode([query], convert_to_numpy=True).tolist()[0]
             result = collection.query(query_embeddings=[query_embedding], n_results=top_k)
