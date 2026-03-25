@@ -3,6 +3,7 @@
 提供合同审查和多智能体辩论接口
 """
 import json
+import re
 from typing import Optional, Any
 from celery.result import AsyncResult
 from fastapi import APIRouter, HTTPException, Header, UploadFile, File, Form
@@ -106,6 +107,34 @@ def _build_case_description_with_evidence(case_description: str, evidence: list)
         + "\n\n[被告证据清单]\n"
         + ("\n".join(defendant_lines) if defendant_lines else "- 无")
     )
+
+
+def _extract_retry_wait_seconds(error_text: str) -> Optional[int]:
+    text = error_text or ""
+    match = re.search(r"Please try again in\s*([0-9]+)m([0-9]+(?:\.[0-9]+)?)s", text)
+    if match:
+        minutes = int(match.group(1))
+        seconds = float(match.group(2))
+        return int(minutes * 60 + seconds + 1)
+
+    match = re.search(r"Please try again in\s*([0-9]+(?:\.[0-9]+)?)s", text)
+    if match:
+        return int(float(match.group(1)) + 1)
+
+    return None
+
+
+def _friendly_stream_error_message(error_text: str) -> str:
+    text = error_text or ""
+    if "rate_limit" in text.lower() or "Rate limit" in text:
+        wait_seconds = _extract_retry_wait_seconds(text)
+        if wait_seconds:
+            minutes, seconds = divmod(wait_seconds, 60)
+            if minutes > 0:
+                return f"当前模型调用频率已达上限，请约 {minutes} 分 {seconds} 秒后重试（或切换模型）。"
+            return f"当前模型调用频率已达上限，请约 {seconds} 秒后重试（或切换模型）。"
+        return "当前模型调用频率已达上限，请稍后重试（或切换模型）。"
+    return text
 
 
 class ContractReviewStreamRequest(BaseModel):
@@ -339,7 +368,8 @@ async def court_debate(
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as e:
             app_logger.error(f"庭审流式输出错误: {e}")
-            yield f"data: {json.dumps({'type':'error','message':str(e)}, ensure_ascii=False)}\n\n"
+            friendly_msg = _friendly_stream_error_message(str(e))
+            yield f"data: {json.dumps({'type':'error','message': friendly_msg}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -374,6 +404,7 @@ async def court_debate_rejudge(
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as e:
             app_logger.error(f"重新开庭流式输出错误: {e}")
-            yield f"data: {json.dumps({'type':'error','message':str(e)}, ensure_ascii=False)}\n\n"
+            friendly_msg = _friendly_stream_error_message(str(e))
+            yield f"data: {json.dumps({'type':'error','message': friendly_msg}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream") 
