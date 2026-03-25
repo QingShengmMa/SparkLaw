@@ -10,7 +10,7 @@ import json
 import re
 import uuid
 from operator import add
-from typing import Annotated, Any, Dict, List, TypedDict, Optional
+from typing import Annotated, Any, Dict, List, TypedDict, Optional, AsyncIterator
 
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -1071,6 +1071,68 @@ class CourtDebateAgent:
             }
         except Exception as e:
             app_logger.warning(f"拉取最终 state 失败: {e}")
+    async def run_stream(
+        self,
+        case_description: str,
+        plaintiff_name: str = "原告",
+        defendant_name: str = "被告",
+        strategy: str = "aggressive",
+        human_evidence: Optional[List[Dict[str, Any]]] = None,
+        custom_config: Optional[Dict[str, Any]] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """兼容旧路由的流式输出接口（前端友好事件格式）。"""
+        _ = (plaintiff_name, defendant_name, custom_config)
+
+        async for event in self.stream(
+            case_description=case_description,
+            strategy=strategy,
+            human_evidences=human_evidence or [],
+        ):
+            ev_type = event.get("type")
+
+            if ev_type == "chunk":
+                phase = str(event.get("phase") or "")
+                role_key = str(event.get("role_key") or "")
+                content = str(event.get("content") or "")
+                if not content:
+                    continue
+
+                if phase == PHASE_OPENING:
+                    yield {"type": "opening", "content": content}
+                elif role_key == "plaintiff":
+                    yield {"type": "plaintiff", "content": content}
+                elif role_key == "defendant":
+                    yield {"type": "defendant", "content": content}
+                elif role_key == "judge":
+                    yield {"type": "judge", "content": content}
+                else:
+                    yield {"type": "log", "message": content}
+
+            elif ev_type == "result":
+                result = event.get("result") or {}
+                verdict_result = result.get("verdict_result") or {}
+                verdict_text = str(
+                    verdict_result.get("verdict_text")
+                    or result.get("verdict")
+                    or ""
+                )
+                plaintiff_rate = int(result.get("plaintiff_win_rate", 50))
+                plaintiff_rate = max(0, min(100, plaintiff_rate))
+                defendant_rate = int(result.get("defendant_win_rate", 100 - plaintiff_rate))
+                if plaintiff_rate + defendant_rate != 100:
+                    defendant_rate = 100 - plaintiff_rate
+
+                yield {
+                    "type": "verdict",
+                    "content": verdict_text,
+                    "win_probability": {
+                        "plaintiff": plaintiff_rate,
+                        "defendant": defendant_rate,
+                    },
+                }
+
+            elif ev_type == "error":
+                yield {"type": "error", "message": str(event.get("message") or "庭审执行失败")}
 
 
 # ─────────────────────────── 补丁 ───────────────────────────

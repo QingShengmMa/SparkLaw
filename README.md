@@ -1,9 +1,8 @@
 <div align="center">
-  <img src="showcase/branding/sparklaw-logo.png" alt="SparkLaw Logo" width="120" />
 
-# SparkLaw
+# SparkLaw ⚖️
 
-### 开源 AI 法律智能体
+### 面向中文法律场景的开源 AI 智能体系统
 
 <p>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-0ea5e9.svg" alt="MIT License" /></a>
@@ -11,66 +10,133 @@
   <a href="https://github.com/QingShengmMa/SparkLaw/stargazers"><img src="https://img.shields.io/github/stars/QingShengmMa/SparkLaw?style=social" alt="GitHub Stars" /></a>
   <a href="https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white"><img src="https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white" alt="FastAPI" /></a>
   <a href="https://img.shields.io/badge/Next.js-Frontend-000000?logo=nextdotjs"><img src="https://img.shields.io/badge/Next.js-Frontend-000000?logo=nextdotjs" alt="Next.js" /></a>
+  <a href="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python" /></a>
 </p>
 
-English · [中文](./README.md)
-</div>
+[English](./README_EN.md) · 中文
 
 <p align="center">
-  <img src="showcase/gifs/mock-court.gif" alt="SparkLaw Hero - Mock Court" width="100%" />
+  <img src="showcase/screenshots/landing.png" alt="SparkLaw Landing" width="100%" />
 </p>
 
----
-
-## 简介
-
-SparkLaw 是一个面向中文法律场景的开源 AI 系统，聚焦“法律问答、结构化法律工具、模拟法庭推演”三条核心链路。  
-它通过大模型 + RAG + 流式交互，将法律知识检索、案件分析和对抗式论证整合为一个可落地的开发者项目。  
-目标不是堆砌概念，而是提供可运行、可扩展、可二次开发的开源法律 AI 基础设施。
+</div>
 
 ---
 
-## ✨ 核心特性矩阵
+## 📌 项目简介
+
+`SparkLaw` 是一个聚焦中文法律场景的开源 AI 项目，围绕三类高价值工作流构建：
+
+- **法律问答（Legal Chat）**：多轮上下文、流式回复、会话记忆
+- **合同审查（Contract Review）**：结构化风险识别 + 修改建议
+- **模拟法庭（Mock Court）**：多角色对抗推理 + 流式庭审过程
+
+项目目标是提供一套**可运行、可扩展、可二次开发**的法律 AI 工程骨架，而不仅是一个演示页面。
+开发者友好：模块化后端 + 独立前端，支持本地/云端模型配置，便于二次开发。
+
+---
+
+## 🚀 产品亮点
+
+SparkLaw 不是“只有聊天框”的法律 AI，而是围绕真实法律工作流设计的一体化产品：
+
+- **一站式法律工作台**：问答、审查、起草、庭审推演、计算工具集中在同一产品内
+- **从咨询到落地闭环**：从法律咨询到合同风险识别，再到文书生成与证据评估，减少来回切换
+- **面向中文法律语境优化**：围绕中国常见法律场景组织能力与输出结构
+- **强交互体验**：流式返回、分阶段进度、可追踪步骤，降低“黑箱感”
+- **开发者友好**：模块化后端 + 独立前端，支持本地/云端模型配置，便于二次开发
+
+---
+
+## 🧱 技术栈（详细）
+
+| 层级 | 技术 | 说明 |
+|---|---|---|
+| Frontend | Next.js 16 + React 18 + TypeScript | 构建多页面法律产品界面，支持复杂交互与状态管理 |
+| UI & State | Tailwind CSS + Zustand + lucide-react | 实现高效样式组织、全局状态管理与统一图标体系 |
+| Backend API | FastAPI + Pydantic v2 + Uvicorn | 提供高性能 API、严格数据校验与自动化接口契约 |
+| Streaming | SSE (StreamingResponse) | 用于问答、合同审查、模拟法庭、文书起草等流式输出 |
+| Agent Orchestration | LangChain + LangGraph + ReAct | 实现多步骤推理、工具调用与多智能体协作流程 |
+| Retrieval / RAG | ChromaDB + sentence-transformers | 支持法律文本切分、向量检索、语义召回 |
+| Async Tasks | Celery + Redis | 支持耗时任务异步执行与任务状态跟踪 |
+| Document Parsing | PyMuPDF + python-docx + python-multipart | 处理 PDF/DOCX 上传解析与文本抽取 |
+| Quality & Test | pytest + pytest-asyncio + pytest-cov | 覆盖核心接口与关键逻辑，支持异步测试与覆盖率统计 |
+| Deployment | Docker + docker-compose | 本地一键拉起前后端，便于开发与演示 |
+
+---
+
+## 🏗️ 项目架构（关键模块）
+
+```text
+SparkLaw/
+├─ app/
+│  ├─ main.py                          # FastAPI 入口，注册路由与中间件
+│  ├─ api/v1/routes/
+│  │  ├─ chat.py                       # 法律问答（普通 + SSE）
+│  │  ├─ document.py                   # 文档上传、解析、检索
+│  │  ├─ tools.py                      # 合同审查、模拟法庭、分析工作流
+│  │  └─ legal_tools.py                # 文书起草/证据评估/合规体检/计算器网关
+│  ├─ agents/                          # Agent 角色与对话编排
+│  ├─ services/                        # 业务核心：审查器、法庭代理、RAG、LLM 工厂
+│  ├─ knowledge/                       # 召回、重排、引用与向量存储
+│  ├─ tools/calculators/               # 14 类法律计算器策略与工厂调度
+│  ├─ core/                            # 配置、日志、记忆管理等基础能力
+│  └─ workers/                         # Celery 应用定义
+├─ frontend/src/
+│  ├─ app/                             # Next.js 路由页面（chat/contract/court/tools...）
+│  ├─ components/                      # 业务组件与共享组件
+│  ├─ hooks/                           # 自定义 hooks（主题、设置等）
+│  └─ store/                           # 前端状态管理
+├─ tests/                              # 后端接口与服务测试
+├─ eval/                               # 评测数据生成与评估脚本
+└─ docker-compose.yml                  # 本地容器化编排
+```
+
+### 核心请求链路（简化）
+
+1. 前端页面发起请求（REST / SSE）
+2. `api/v1/routes` 进行参数接收与协议转换
+3. `services` 触发对应工作流（问答、审查、法庭、工具）
+4. `agents + knowledge + tools` 完成推理、检索与计算
+5. 结果以结构化 JSON 或流式事件返回前端
+
+---
+
+## 🖼️ 功能预览
 
 <table>
   <tr>
     <td width="50%" valign="top">
       <img src="showcase/screenshots/legal-chat.png" alt="Legal Chat" width="100%" />
-      <b>普法问答</b><br>
-      支持多轮上下文、流式响应与会话记忆，适合法律咨询、条文解释与场景化问答。
+      <b>法律问答</b>
     </td>
     <td width="50%" valign="top">
       <img src="showcase/screenshots/contract-review.png" alt="Contract Review" width="100%" />
-      <b>合同审查</b><br>
-      基于结构化流程识别风险条款，输出风险等级、问题分析与可执行修改建议。
+      <b>合同审查</b>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
       <img src="showcase/screenshots/legal-calculator.png" alt="Legal Calculator" width="100%" />
-      <b>法律计算器</b><br>
-      覆盖诉讼费、补偿金、利息等常用计算场景，参数化输入、结果可追溯。
+      <b>法律计算器</b>
     </td>
     <td width="50%" valign="top">
       <img src="showcase/screenshots/document-drafting.png" alt="Document Drafting" width="100%" />
-      <b>文书起草</b><br>
-      基于模板与指令生成文书草稿，支持 AI 续写、改写与法律表达优化。
+      <b>文书起草</b>
     </td>
   </tr>
 </table>
 
 ---
 
-## 🧱 技术架构
-
-- ⚛️ **Frontend**: Next.js 16, TypeScript, Tailwind CSS  
-- ⚡ **Backend**: FastAPI, Pydantic, SSE  
-- 🦜 **AI / LLM Orchestration**: LangChain, LangGraph, ReAct  
-- 🗄️ **Infrastructure**: ChromaDB, Redis, Celery
-
----
-
 ## 🚀 快速开始
+
+### 前置要求
+
+- Python 3.10+
+- Node.js 18+
+- （可选）Redis 6+
+- （可选）Ollama（本地模型模式）
 
 ### 1) 克隆项目
 
@@ -91,7 +157,7 @@ cp .env.local.example .env.local
 cd ..
 ```
 
-### 3) 启动后端（Python / FastAPI）
+### 3) 启动后端
 
 ```bash
 python -m venv venv
@@ -104,7 +170,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 4) 启动前端（Node / Next.js）
+### 4) 启动前端
 
 ```bash
 cd frontend
@@ -114,29 +180,45 @@ npm run dev
 
 访问：`http://localhost:3000`
 
-### 5) （可选）启动异步 Worker
+---
 
-```bash
-celery -A app.workers.celery_app worker --loglevel=info
-```
+## ⚙️ 关键环境变量说明
 
-### 6) 项目结构（极简）
+| 变量名 | 说明 | 示例 |
+|---|---|---|
+| `LLM_MODE` | 模型模式：`local` / `cloud` | `cloud` |
+| `OPENAI_API_KEY` | 云端模型密钥 | `sk-***` |
+| `OPENAI_BASE_URL` | OpenAI 兼容网关 | `https://api.openai.com/v1` |
+| `OPENAI_MODEL` | 云端模型名称 | `gpt-4o-mini` |
+| `OLLAMA_BASE_URL` | 本地 Ollama 地址 | `http://localhost:11434` |
+| `OLLAMA_MODEL` | 本地模型名称 | `qwen2.5:7b` |
+| `REDIS_URL` | Redis 主连接 | `redis://localhost:6379/0` |
+| `NEXT_PUBLIC_API_URL` | 前端后端地址 | `http://localhost:8000` |
 
-```text
-SparkLaw/
-├─ app/                    # FastAPI backend
-├─ frontend/               # Next.js frontend
-├─ showcase/               # README assets
-├─ requirements.txt
-└─ README.md
-```
+完整配置请参考：`.env.example` 与 `frontend/.env.local.example`。
 
 ---
 
-## 🤝 Contributing
+## 🤝 贡献指南
 
-欢迎 Issue 与 PR。建议在提交前附上：变更说明、测试方式、关键截图（如涉及 UI）。  
+欢迎 Issue / PR！
+
+提交前建议：
+
+1. 确保本地测试通过
+2. 描述变更动机与方案
+3. 如涉及 UI，附关键截图
+4. 保持接口向后兼容或清晰说明 breaking change
+
 详细规则见 [`CONTRIBUTING.md`](./CONTRIBUTING.md)。
+
+---
+
+## ⚠️ 免责声明
+
+SparkLaw 旨在提供法律信息处理与辅助分析能力，不构成律师执业意见，不应直接替代专业法律服务。请在关键法律决策前咨询持证律师。
+
+---
 
 ## 📄 License
 
@@ -145,5 +227,5 @@ SparkLaw/
 ---
 
 <div align="center">
-  <b>如果 SparkLaw 对你有帮助，欢迎点一个 ⭐ Star。</b>
+  <b>如果 SparkLaw 对你有帮助，欢迎点一个 ⭐ Star！</b>
 </div>
