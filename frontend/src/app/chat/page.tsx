@@ -33,6 +33,7 @@ interface Message {
 interface ChatSseEvent {
   event?: string;
   type?: string;
+  role?: string;
   message?: string;
   answer?: string;
   content?: string;
@@ -273,8 +274,38 @@ export default function ChatPage() {
                 ),
               }))
             );
+          } else if (evType === 'tool_call') {
+            const toolName = data.tool_name || 'unknown_tool';
+            const toolInput = data.input ?? {};
+            setLocalMessages((prev) =>
+              updateStreamingAssistant(prev, (current) => ({
+                ...current,
+                role: 'assistant',
+                content: current.content || '',
+                statusText: `正在调用 ${toolName}...`,
+                tool_calls: [
+                  ...(current.tool_calls || []),
+                  { name: toolName, input: toolInput, status: 'running' as const },
+                ],
+              }))
+            );
+          } else if (evType === 'tool_result') {
+            const toolName = data.tool_name || 'unknown_tool';
+            setLocalMessages((prev) =>
+              updateStreamingAssistant(prev, (current) => ({
+                ...current,
+                role: 'assistant',
+                content: current.content || '',
+                statusText: undefined,
+                tool_calls: (current.tool_calls || []).map((tc) =>
+                  tc.name === toolName && tc.status === 'running'
+                    ? { ...tc, status: 'success' as const }
+                    : tc
+                ),
+              }))
+            );
           } else if (evType === 'final') {
-            finalAnswer = data.answer || finalAnswer;
+            finalAnswer = data.answer || data.content || finalAnswer;
             setLocalMessages((prev) =>
               updateStreamingAssistant(prev, (current) => ({
                 ...current,
@@ -284,7 +315,7 @@ export default function ChatPage() {
                 tool_calls: current.tool_calls || [],
               }))
             );
-          } else if (evType === 'error') {
+          } else if (evType === 'error' || data.role === 'error') {
             isError = true;
             errorContent = data.content || data.message || '未知错误';
             setLocalMessages((prev) =>

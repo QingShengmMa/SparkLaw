@@ -114,21 +114,25 @@ SparkLaw/
   <tr>
     <td width="50%" valign="top">
       <img src="showcase/screenshots/legal-chat.png" alt="Legal Chat" width="100%" />
-      <b>Legal Chat</b>
+      <b>Legal Chat</b><br />
+      Delivers continuous legal consultation with streaming responses across multi-turn conversations.
     </td>
     <td width="50%" valign="top">
       <img src="showcase/screenshots/contract-review.png" alt="Contract Review" width="100%" />
-      <b>Contract Review</b>
+      <b>Contract Review</b><br />
+      Detects contractual risks in a structured way and provides actionable revision suggestions.
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
       <img src="showcase/screenshots/legal-calculator.png" alt="Legal Calculator" width="100%" />
-      <b>Legal Calculator</b>
+      <b>Legal Calculator</b><br />
+      Covers common legal fee and compensation scenarios with quick and traceable outputs.
     </td>
     <td width="50%" valign="top">
       <img src="showcase/screenshots/document-drafting.png" alt="Document Drafting" width="100%" />
-      <b>Document Drafting</b>
+      <b>Document Drafting</b><br />
+      Generates standardized legal draft documents from case facts and supports iterative refinement.
     </td>
   </tr>
 </table>
