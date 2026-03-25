@@ -695,6 +695,11 @@
   animation: pulse-subtle 2s ease-in-out infinite;
 }
 
+@keyframes scanDown {
+  0% { top: 0%; }
+  100% { top: 100%; }
+}
+
 /* Print Styles */
 @media print {
   .no-print {

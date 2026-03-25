@@ -1,132 +1,102 @@
+<div align="center">
+  <img src="showcase/branding/sparklaw-logo.png" alt="SparkLaw Logo" width="120" />
+
 # SparkLaw
 
-> “法自人民来，理为群众讲。”
-<p align="left">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-ffd43b.svg" alt="License"></a>
-  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB.svg" alt="Python"></a>
-  <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-14-000000.svg" alt="Next.js"></a>
-  <a href="https://github.com/langchain-ai/langgraph"><img src="https://img.shields.io/badge/LangGraph-Agent%20Orchestration-E74C3C.svg" alt="LangGraph"></a>
-  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-Async%20SSE-009688.svg" alt="FastAPI"></a>
-  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-Welcome-2EA44F.svg" alt="PRs Welcome"></a>
+**开源 AI 法律智能体（Legal Agent）**
+
+让法律服务触手可及：**普法问答 · 法律工具 · 模拟法庭**
+
+[English](./README_EN.md) · 中文
+
+<p>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-0ea5e9.svg" alt="MIT License" /></a>
+  <a href="https://github.com/QingShengmMa/SparkLaw/pulls"><img src="https://img.shields.io/badge/PRs-Welcome-22c55e.svg" alt="PRs Welcome" /></a>
+  <a href="https://github.com/QingShengmMa/SparkLaw/stargazers"><img src="https://img.shields.io/github/stars/QingShengmMa/SparkLaw?style=social" alt="GitHub Stars" /></a>
+  <a href="https://github.com/QingShengmMa/SparkLaw/issues"><img src="https://img.shields.io/github/issues/QingShengmMa/SparkLaw" alt="Issues" /></a>
+</p>
+</div>
+
+---
+
+## 界面展示
+
+### 1) 首页（Landing）
+
+<p align="center">
+  <img src="showcase/screenshots/landing.png" alt="SparkLaw Landing" width="92%" />
 </p>
 
+### 2) 普法问答
+
+<p align="center">
+  <img src="showcase/screenshots/legal-chat.png" alt="SparkLaw Legal Chat" width="92%" />
+</p>
+
+### 3) 合同审查
+
+<p align="center">
+  <img src="showcase/screenshots/contract-review.png" alt="SparkLaw Contract Review" width="92%" />
+</p>
+
+### 4) 法律计算器
+
+<p align="center">
+  <img src="showcase/screenshots/legal-calculator.png" alt="SparkLaw Legal Calculator" width="92%" />
+</p>
+
+### 5) 文书起草
+
+<p align="center">
+  <img src="showcase/screenshots/document-drafting.png" alt="SparkLaw Document Drafting" width="92%" />
+</p>
+
+### 模拟法庭（GIF）
+
+<p align="center">
+  <img src="showcase/gifs/mock-court.gif" alt="SparkLaw Mock Court GIF" width="92%" />
+</p>
 
 ---
 
-## 主要功能 (Core Functions)
+## 核心功能
 
-- **法律问题即时咨询**  
-  可以像聊天一样描述你的问题（比如劳动纠纷、租房纠纷、合同违约），系统会给出结构化、可读性强的法律建议。
-
-- **合同风险自动识别**  
-  上传合同后，系统会标出可能有风险的条款，并给出“为什么有风险、建议怎么改”的说明，帮助普通用户快速看懂合同。
-
-- **模拟法庭推演**  
-  系统会从不同立场（如原告/被告/法官）进行对照分析，帮助你提前看到争议焦点和可能的裁判方向。
-
-- **流式展示分析过程**  
-  回答不是一次性“憋出来”的长文本，而是实时输出过程，便于理解系统是如何一步步得到结论的。
-
-- **持续改进的评估体系**  
-  项目内置离线评估脚本，持续检查回答质量，让功能迭代更稳定，而不是仅靠主观感受。
+- **普法问答**：面向中文法律场景的多轮对话与法律检索辅助。
+- **法律工具**：合同审查、文书起草、诉讼费与赔偿金等结构化工具。
+- **模拟法庭**：原告/被告/法官多角色推演与庭审复盘。
 
 ---
 
-## 架构设计
+## 快速开始
 
-### 系统全景图
-
-```mermaid
-graph LR
-    U[用户] --> FE[Next.js Frontend]
-    FE -->|HTTP / SSE| API[FastAPI Backend]
-
-    API --> LEGAL[Legal Agent Service]
-    API --> ANALYSIS[Supervisor Analysis Service]
-    API --> DOC[Document Service]
-
-    LEGAL --> GRAPH[LangGraph Runtime]
-    ANALYSIS --> GRAPH
-
-    GRAPH --> LLM[LLM Provider]
-
-    LEGAL --> RAG[Advanced RAG]
-    RAG --> QR[Query Rewriter]
-    RAG --> VDB[(ChromaDB)]
-    RAG --> RR[Cross-Encoder Reranker]
-
-    DOC --> CELERY[Celery Worker]
-    CELERY --> REDIS[(Redis)]
-    CELERY --> LLM
-
-    API --> EVAL[LLM-as-a-Judge Eval]
-    EVAL --> REPORT[Evaluation Reports]
-```
-
-### Agent 状态机流转图
-
-```mermaid
-stateDiagram-v2
-    [*] --> Supervisor
-
-    Supervisor --> LegalResearcher: dispatch(法律检索)
-    Supervisor --> ContractAnalyzer: dispatch(合同分析)
-    Supervisor --> LitigationStrategist: dispatch(诉讼策略)
-
-    LegalResearcher --> Supervisor: submit(法条依据)
-    ContractAnalyzer --> Supervisor: submit(风险结论)
-    LitigationStrategist --> Supervisor: submit(策略建议)
-
-    Supervisor --> Supervisor: review(验收)
-
-    Supervisor --> LegalResearcher: rework
-    Supervisor --> ContractAnalyzer: rework
-    Supervisor --> LitigationStrategist: rework
-
-    Supervisor --> Judge: pass(信息充分)
-    Judge --> [*]: final_verdict
-```
-
----
-
-## 快速开始 (Quick Start)
-
-### 前置依赖
+### 1) 环境要求
 - Python 3.10+
 - Node.js 18+
-- Redis 6+
+- npm 9+
+- Redis（可选，用于异步任务）
 
-### 环境配置（`.env` 示例）
+### 2) 克隆项目
 
 ```bash
-APP_NAME=SparkLaw
-APP_VERSION=1.0.0
-DEBUG=true
-
-LLM_MODE=cloud
-OPENAI_API_KEY=sk-your_api_key_here
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-4o-mini
-
-CHROMA_PERSIST_DIR=./data/chroma
-REDIS_URL=redis://localhost:6379/0
-CELERY_BROKER_URL=redis://localhost:6379/1
-CELERY_RESULT_BACKEND=redis://localhost:6379/2
+git clone https://github.com/QingShengmMa/SparkLaw.git
+cd SparkLaw
 ```
 
-### 后端启动
+### 3) 启动后端（FastAPI）
 
 ```bash
 python -m venv venv
-# Windows: venv\Scripts\activate
-# macOS/Linux: source venv/bin/activate
+# Windows
+venv\Scripts\activate
+# macOS / Linux
+# source venv/bin/activate
 
 pip install -r requirements.txt
 cp .env.example .env
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 前端启动
+### 4) 启动前端（Next.js）
 
 ```bash
 cd frontend
@@ -135,40 +105,82 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-### Docker（占位）
+访问：`http://localhost:3000`
+
+### 5) 可选：启动异步 Worker
 
 ```bash
-docker compose up -d
+celery -A app.workers.celery_app worker --loglevel=info
 ```
 
 ---
 
-## 开发计划 (Roadmap)
+## 环境变量（最小示例）
 
-### 已完成
-- ✅ ReAct Tool Loop（`agent -> tools -> agent`）
-- ✅ Supervisor 多智能体编排
-- ✅ Advanced RAG（Rewrite + Recall + Rerank）
-- ✅ FastAPI + SSE 流式输出
-- ✅ Celery 异步审查链路
-- ✅ LLM-as-a-Judge 离线评估
+后端 `.env`：
 
-### 计划中
-- 🔲 BM25 + Dense 混合检索
-- 🔲 更多本地开源模型接入
-- 🔲 对接真实裁判文书库与引用链
-- 🔲 评估指标接入 CI 回归
-- 🔲 多租户会话持久化
+```bash
+OPENAI_API_KEY=sk-xxx
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o-mini
+REDIS_URL=redis://localhost:6379/0
+```
+
+前端 `frontend/.env.local`：
+
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
 
 ---
 
-## 贡献 (Contribution)
+## 技术栈
 
-欢迎提交 Issue / PR，一起把这个项目打磨得更稳、更清晰。  
-贡献说明见：[`CONTRIBUTING.md`](CONTRIBUTING.md)
+| 层 | 技术 |
+|---|---|
+| Frontend | Next.js 16, TypeScript, Tailwind CSS |
+| Backend | FastAPI, Pydantic, SSE |
+| Agent / Orchestration | LangChain, LangGraph |
+| Retrieval | ChromaDB, RAG, Reranker |
+| Async | Celery, Redis |
+
+---
+
+## 项目结构（简版）
+
+```text
+SparkLaw/
+├─ app/                          # FastAPI 后端
+│  ├─ api/v1/routes/             # 路由
+│  ├─ services/                  # 业务服务（审查/法庭/问答）
+│  ├─ tools/calculators/         # 法律计算器策略
+│  └─ orchestration/workflows/   # LangGraph 工作流
+├─ frontend/                     # Next.js 前端
+│  └─ src/app/                   # 页面路由
+├─ showcase/                     # README 展示素材
+├─ README.md
+└─ README_EN.md
+```
+
+---
+
+## 贡献指南
+
+欢迎 Issue 与 PR！
+
+1. Fork 本仓库
+2. 新建分支：`feat/xxx` 或 `fix/xxx`
+3. 提交并推送
+4. 发起 Pull Request
+
+详细说明：`CONTRIBUTING.md`
 
 ---
 
 ## License
 
-MIT
+本项目采用 [MIT License](./LICENSE)。
+
+<div align="center">
+如果这个项目对你有帮助，欢迎点一个 ⭐
+</div>

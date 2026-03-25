@@ -1,3 +1,5 @@
+'use client';
+
 import { Scale as LucideScale } from 'lucide-react';
 import { useSettings } from '@/hooks/useSettings';
 

@@ -1,152 +1,135 @@
-'use client';
-
-import { FileText, MessageSquare, Settings, Sparkles, Zap, Shield } from 'lucide-react';
 import Link from 'next/link';
+import {
+  MessageSquare,
+  Wrench,
+  Gavel,
+  Github,
+  ArrowRight,
+} from 'lucide-react';
 import ScaleIcon from '@/components/ScaleIcon';
-import { useEffect, useState } from 'react';
 
-export default function HomePage() {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
+const LandingPage = () => {
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
-      {/* 动态背景粒子 */}
-      <div className="absolute inset-0 overflow-hidden">
-        {mounted && [...Array(50)].map((_, i) => (
-          <div
-            key={i}
-            className="particle"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 5}s`,
-              animationDuration: `${3 + Math.random() * 4}s`,
-            }}
-          />
-        ))}
+    <div className="h-screen bg-[#FDFDFD] text-slate-600 font-sans overflow-hidden relative flex flex-col selection:bg-blue-100">
+      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-[10%] -left-[10%] w-[50%] h-[50%] bg-cyan-200/40 blur-[100px] rounded-full mix-blend-multiply" />
+        <div className="absolute top-[10%] -right-[10%] w-[40%] h-[50%] bg-purple-200/40 blur-[120px] rounded-full mix-blend-multiply" />
+        <div className="absolute -bottom-[20%] left-[20%] w-[60%] h-[60%] bg-blue-300/30 blur-[150px] rounded-full mix-blend-multiply" />
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+CjxwYXRoIGQ9Ik0wIDBoNDB2NDBIMHoiIGZpbGw9Im5vbmUiLz4KPHBhdGggZD0iTTAgMTBoNDBNMTAgMHY0ME0wIDIwaDQwTTIwIDB2NDBNMCAzMGg0ME0zMCAwdjQwIiBzdHJva2U9InJnYmEoMCwwLDAsMC4wMikiIHN0cm9rZS13aWR0aD0iMSIvPgo8L3N2Zz4=')] opacity-60" />
       </div>
 
-      {/* 光晕效果 */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl animate-pulse-slow" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse-slow" style={{ animationDelay: '1s' }} />
-
-      {/* 主内容 */}
-      <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-4 py-4 pb-20">
-        {/* 中央火焰天秤 */}
-        <div className="mb-6 animate-float">
-          <div className="relative">
-            {/* 外层光环 */}
-            <div className="absolute inset-0 animate-spin-slow">
-              <div className="h-64 w-64 rounded-full border-2 border-dashed border-blue-400/30" />
-            </div>
-            <div className="absolute inset-0 animate-spin-reverse">
-              <div className="h-64 w-64 rounded-full border-2 border-dotted border-purple-400/30" />
-            </div>
-            
-            {/* 火焰天秤容器 */}
-            <div className="relative flex h-64 w-64 items-center justify-center">
-              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-600/20 via-purple-600/20 to-orange-600/20 blur-2xl animate-pulse-slow" />
-              <div className="relative flex h-48 w-48 items-center justify-center rounded-full bg-gradient-legal shadow-2xl">
-                <ScaleIcon size={96} className="text-white" withFire={true} />
-              </div>
-            </div>
+      <header className="relative z-20 px-6 py-4 md:px-12 flex items-center justify-between border-b border-white/50 bg-white/30 backdrop-blur-md">
+        <div className="flex items-center space-x-3 cursor-pointer group">
+          <div className="bg-gradient-to-tr from-blue-600 to-cyan-500 p-2 rounded-xl shadow-md group-hover:shadow-lg transition-all duration-300 transform group-hover:-translate-y-0.5">
+            <ScaleIcon size={20} className="text-white" withFire={true} />
           </div>
+          <span className="text-xl font-extrabold tracking-tight text-slate-800">SparkLaw</span>
         </div>
 
-        {/* 标题 */}
-        <div className="text-center mb-4 animate-fadeIn">
-          <h1 className="mb-4 bg-gradient-to-r from-blue-400 via-purple-400 to-orange-400 bg-clip-text text-7xl font-bold text-transparent animate-gradient">
-            SparkLaw
+        <div className="flex items-center space-x-4">
+          <a href="https://github.com/QingShengmMa/SparkLaw/blob/main/README.md" target="_blank" rel="noreferrer" className="hidden md:flex items-center text-sm font-medium text-slate-500 hover:text-slate-800 transition">文档</a>
+          <a href="https://github.com/QingShengmMa/SparkLaw/blob/main/CONTRIBUTING.md" target="_blank" rel="noreferrer" className="hidden md:flex items-center text-sm font-medium text-slate-500 hover:text-slate-800 transition">贡献指南</a>
+          <a
+            href="https://github.com/QingShengmMa/SparkLaw"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center px-4 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:shadow-md"
+          >
+            <Github className="w-4 h-4 mr-2" />
+            <span>Star on GitHub</span>
+          </a>
+        </div>
+      </header>
+
+      <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4">
+        <div className="text-center max-w-4xl mx-auto mb-10">
+          <h1 className="text-6xl md:text-8xl font-extrabold tracking-tight leading-tight text-slate-900 mb-4">
+            让法律服务
+            <br className="md:hidden" />
+            <span
+              className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-600 animate-pulse"
+              style={{ animationDuration: '4s' }}
+            >
+              触手可及
+            </span>
           </h1>
-          <p className="text-xl text-slate-400">
-            AI 驱动的智能法律助手 · 开源 · 免费 · 强大
+          <p className="text-lg md:text-xl text-slate-500 max-w-2xl mx-auto leading-relaxed font-medium">
+            致力于用纯粹的技术，为你提供优质的法律智能体验。
           </p>
+
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-5">
+            <Link href="/tools" className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-semibold shadow-lg hover:shadow-xl transition-all flex items-center justify-center group transform hover:-translate-y-0.5">
+              立即体验
+              <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+            </Link>
+            <a
+              href="https://github.com/QingShengmMa/SparkLaw#部署指南"
+              target="_blank"
+              rel="noreferrer"
+              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold backdrop-blur-sm shadow-sm hover:shadow-md transition-all flex items-center justify-center transform hover:-translate-y-0.5"
+            >
+              部署指南
+            </a>
+          </div>
         </div>
 
-        {/* 特性标签 */}
-        <div className="mb-6 flex flex-wrap items-center justify-center gap-4 animate-fadeIn" style={{ animationDelay: '0.2s' }}>
-          <div className="flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-4 py-2 backdrop-blur-sm">
-            <Zap size={16} className="text-blue-400" />
-            <span className="text-sm text-blue-300">LangGraph 多智能体</span>
-          </div>
-          <div className="flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-4 py-2 backdrop-blur-sm">
-            <Sparkles size={16} className="text-purple-400" />
-            <span className="text-sm text-purple-300">实时流式推演</span>
-          </div>
-          <div className="flex items-center gap-2 rounded-full border border-orange-500/30 bg-orange-500/10 px-4 py-2 backdrop-blur-sm">
-            <Shield size={16} className="text-orange-400" />
-            <span className="text-sm text-orange-300">专业法律分析</span>
+        <div className="w-full max-w-6xl mx-auto">
+          <div className="grid md:grid-cols-3 gap-6 px-4">
+            <Link href="/chat" className="group relative bg-white/70 backdrop-blur-xl border border-white p-7 rounded-[2rem] hover:border-blue-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_20px_40px_rgb(37,99,235,0.08)] transition-all duration-300 transform hover:-translate-y-1 block">
+              <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-5 border border-blue-100 shadow-sm">
+                <MessageSquare className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 mb-2">普法问答</h3>
+              <p className="text-slate-500 text-sm leading-relaxed mb-4">
+                日常纠纷不知道怎么办？法条太生涩看不懂？在这里用大白话向 AI 提问，获取通俗易懂的法律解答与指引。
+              </p>
+              <div className="text-blue-600 text-sm font-semibold flex items-center opacity-0 group-hover:opacity-100 transition-opacity -translate-x-2 group-hover:translate-x-0 duration-300">
+                开始提问 <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Link>
+
+            <Link href="/tools" className="group relative bg-white/70 backdrop-blur-xl border border-white p-7 rounded-[2rem] hover:border-emerald-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_20px_40px_rgb(16,185,129,0.08)] transition-all duration-300 transform hover:-translate-y-1 block">
+              <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mb-5 border border-emerald-100 shadow-sm">
+                <Wrench className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 mb-2">实用法律工具</h3>
+              <p className="text-slate-500 text-sm leading-relaxed mb-4">
+                提供诉讼费速算、劳动仲裁补偿金计算、基础合同条款检查等开箱即用的小工具，自己也能把账算清楚。
+              </p>
+              <div className="text-emerald-600 text-sm font-semibold flex items-center opacity-0 group-hover:opacity-100 transition-opacity -translate-x-2 group-hover:translate-x-0 duration-300">
+                使用工具 <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Link>
+
+            <Link href="/court" className="group relative bg-white/70 backdrop-blur-xl border border-white p-7 rounded-[2rem] hover:border-purple-200 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_20px_40px_rgb(168,85,247,0.08)] transition-all duration-300 transform hover:-translate-y-1 block">
+              <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mb-5 border border-purple-100 shadow-sm">
+                <Gavel className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 mb-2">模拟法庭</h3>
+              <p className="text-slate-500 text-sm leading-relaxed mb-4">
+                扮演原告或被告，在 AI 审判长的引导下进行回合制庭审推演。提前演练抗辩策略，提升法庭应变能力。
+              </p>
+              <div className="text-purple-600 text-sm font-semibold flex items-center opacity-0 group-hover:opacity-100 transition-opacity -translate-x-2 group-hover:translate-x-0 duration-300">
+                进入法庭 <ArrowRight className="w-4 h-4 ml-1" />
+              </div>
+            </Link>
           </div>
         </div>
+      </main>
 
-        {/* 功能卡片 */}
-        <div className="grid max-w-4xl grid-cols-1 gap-6 md:grid-cols-3 mb-6 animate-fadeIn" style={{ animationDelay: '0.4s' }}>
-          <Link href="/chat">
-            <div className="group relative overflow-hidden rounded-2xl border border-blue-500/20 bg-slate-900/50 p-6 backdrop-blur-sm transition-all hover:scale-105 hover:border-blue-500/50 hover:shadow-2xl hover:shadow-blue-500/20">
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-              <div className="relative">
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
-                  <MessageSquare className="text-white" size={28} />
-                </div>
-                <h3 className="mb-2 text-xl font-bold text-white">普法问答</h3>
-                <p className="text-sm text-slate-400">
-                  智能法律咨询，支持多轮对话和上下文记忆
-                </p>
-              </div>
-            </div>
-          </Link>
-
-          <Link href="/contract">
-            <div className="group relative overflow-hidden rounded-2xl border border-purple-500/20 bg-slate-900/50 p-6 backdrop-blur-sm transition-all hover:scale-105 hover:border-purple-500/50 hover:shadow-2xl hover:shadow-purple-500/20">
-              <div className="absolute inset-0 bg-gradient-to-br from-purple-600/10 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-              <div className="relative">
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg">
-                  <FileText className="text-white" size={28} />
-                </div>
-                <h3 className="mb-2 text-xl font-bold text-white">合同审查</h3>
-                <p className="text-sm text-slate-400">
-                  AI 深度审查合同条款，识别风险和陷阱
-                </p>
-              </div>
-            </div>
-          </Link>
-
-          <Link href="/debate">
-            <div className="group relative overflow-hidden rounded-2xl border border-orange-500/20 bg-slate-900/50 p-6 backdrop-blur-sm transition-all hover:scale-105 hover:border-orange-500/50 hover:shadow-2xl hover:shadow-orange-500/20">
-              <div className="absolute inset-0 bg-gradient-to-br from-orange-600/10 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-              <div className="relative">
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg">
-                  <ScaleIcon size={28} className="text-white" withFire={true} />
-                </div>
-                <h3 className="mb-2 text-xl font-bold text-white">模拟法庭</h3>
-                <p className="text-sm text-slate-400">
-                  多智能体辩论，预测胜诉概率和判决结果
-                </p>
-              </div>
-            </div>
-          </Link>
-        </div>
-
-        {/* 底部统计 */}
-        <div className="mt-8 grid grid-cols-3 gap-8 text-center animate-fadeIn" style={{ animationDelay: '0.6s' }}>
-          <div>
-            <div className="mb-2 text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">3</div>
-            <div className="text-sm text-slate-400">核心功能模块</div>
+      <footer className="relative z-10 py-5 border-t border-slate-200/50 bg-white/30 backdrop-blur-md">
+        <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center text-xs text-slate-500 font-medium">
+          <div className="flex items-center space-x-2 mb-2 md:mb-0">
+            <ScaleIcon size={16} className="text-slate-400" withFire={true} />
+            <span>SparkLaw - 开源法律智能体</span>
           </div>
           <div>
-            <div className="mb-2 text-4xl font-bold bg-gradient-to-r from-purple-400 to-orange-400 bg-clip-text text-transparent">5+</div>
-            <div className="text-sm text-slate-400">审查维度</div>
-          </div>
-          <div>
-            <div className="mb-2 text-4xl font-bold bg-gradient-to-r from-orange-400 to-blue-400 bg-clip-text text-transparent">24/7</div>
-            <div className="text-sm text-slate-400">全天候服务</div>
+            <span>遵循 MIT 开源协议</span>
           </div>
         </div>
-      </div>
+      </footer>
     </div>
   );
-}
+};
+
+export default LandingPage;

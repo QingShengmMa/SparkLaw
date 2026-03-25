@@ -13,8 +13,7 @@ export default function StatusBar() {
       try {
         const data = await checkHealth();
         setHealth(data);
-      } catch (error) {
-        console.error('Failed to fetch health:', error);
+      } catch {
       } finally {
         setLoading(false);
       }

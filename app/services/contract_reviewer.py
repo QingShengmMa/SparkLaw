@@ -252,19 +252,19 @@ class ContractReviewer:
             risks = []
             for risk_data in data.get("risks", []):
                 # 转换风险等级
-                risk_level_str = risk_data.get("risk_level", "中风险")
-                if "高" in risk_level_str:
+                risk_level_str = risk_data.get("risk_level", "medium")
+                if "高" in risk_level_str or risk_level_str == "high":
                     risk_level = RiskLevel.HIGH
-                elif "低" in risk_level_str:
+                elif "低" in risk_level_str or risk_level_str == "low":
                     risk_level = RiskLevel.LOW
                 else:
                     risk_level = RiskLevel.MEDIUM
                 
                 risk_item = RiskItem(
                     risk_level=risk_level,
-                    original_clause=risk_data.get("original_clause", ""),
-                    risk_explanation=risk_data.get("risk_explanation", ""),
-                    revise_suggestion=risk_data.get("revise_suggestion", "")
+                    clause_text=risk_data.get("clause_text") or risk_data.get("original_clause", ""),
+                    risk_analysis=risk_data.get("risk_analysis") or risk_data.get("risk_explanation", ""),
+                    revision_suggestion=risk_data.get("revision_suggestion") or risk_data.get("revise_suggestion", "")
                 )
                 risks.append(risk_item)
             
@@ -287,9 +287,9 @@ class ContractReviewer:
                 risks=[
                     RiskItem(
                         risk_level=RiskLevel.MEDIUM,
-                        original_clause="[解析失败]",
-                        risk_explanation=f"LLM 输出格式异常，无法解析为结构化数据。原始输出：{llm_output[:200]}...",
-                        revise_suggestion="请重新审查或联系技术支持。"
+                        clause_text="[解析失败]",
+                        risk_analysis=f"LLM 输出格式异常，无法解析为结构化数据。原始输出：{llm_output[:200]}...",
+                        revision_suggestion="请重新审查或联系技术支持。"
                     )
                 ],
                 overall_summary="审查过程中出现格式解析错误，建议重新审查。"

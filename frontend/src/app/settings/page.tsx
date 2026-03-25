@@ -95,8 +95,9 @@ export default function SettingsPage() {
       localStorage.setItem('sparklaw_max_tokens', maxTokens.toString());
 
       setMessage({ type: 'success', text: '配置已保存！刷新页面后生效。' });
-    } catch (error: any) {
-      setMessage({ type: 'error', text: `保存失败：${error.message}` });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '保存失败';
+      setMessage({ type: 'error', text: `保存失败：${message}` });
     } finally {
       setSaving(false);
     }

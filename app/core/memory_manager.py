@@ -17,7 +17,7 @@ from langchain_core.messages import HumanMessage
 
 from app.core.config import settings
 from app.core.logger import app_logger
-from app.services.llm_factory import LLMFactory
+from app.llm.factory import LLMFactory
 
 
 class HybridMemoryManager:

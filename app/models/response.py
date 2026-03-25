@@ -76,39 +76,26 @@ class ResetResponse(BaseModel):
 
 class RiskLevel(str, Enum):
     """风险等级枚举"""
-    HIGH = "高风险"
-    MEDIUM = "中风险"
-    LOW = "低风险"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
 
 
 class RiskItem(BaseModel):
     """风险项模型"""
-    risk_level: RiskLevel = Field(..., description="风险等级")
-    original_clause: str = Field(..., description="原合同条款原文")
-    original_text_quote: str = Field(..., description="原文精确引用（用于高亮定位）")
-    risk_explanation: str = Field(..., description="用大白话解释为什么有风险/坑在哪里")
-    legal_basis: List[str] = Field(default_factory=list, description="法律依据（法条原文）")
-    legal_basis_links: List[str] = Field(default_factory=list, description="法律依据官方链接")
-    revise_suggestion: str = Field(..., description="修改建议或标准的对等条款")
-    confidence_score: float = Field(default=0.0, description="置信度分数（0-1）", ge=0.0, le=1.0)
-    
+    risk_level: RiskLevel = Field(..., description="风险等级：high/medium/low")
+    clause_text: str = Field(..., description="原文中存在风险的条款片段")
+    risk_analysis: str = Field(..., description="为什么有风险的法律分析")
+    revision_suggestion: str = Field(..., description="具体的修改建议或推荐替换的条款文本")
+
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {
-                    "risk_level": "高风险",
-                    "original_clause": "第五条 乙方在试用期内，甲方可随时解除劳动合同，无需支付任何补偿。",
-                    "original_text_quote": "甲方可随时解除劳动合同，无需支付任何补偿",
-                    "risk_explanation": "这是典型的霸王条款。根据《劳动合同法》第21条，试用期内用人单位解除合同必须证明劳动者不符合录用条件，不能随意解除。且即使合法解除，也应支付相应工资。",
-                    "legal_basis": [
-                        "《劳动合同法》第二十一条：在试用期中，除劳动者有本法第三十九条和第四十条第一项、第二项规定的情形外，用人单位不得解除劳动合同。用人单位在试用期解除劳动合同的，应当向劳动者说明理由。",
-                        "《劳动合同法》第三十九条：劳动者有下列情形之一的，用人单位可以解除劳动合同：（一）在试用期间被证明不符合录用条件的..."
-                    ],
-                    "legal_basis_links": [
-                        "http://www.npc.gov.cn/npc/c30834/202006/75ba6483b8344591abd07917e1d25cc8.shtml"
-                    ],
-                    "revise_suggestion": "建议修改为：'试用期内，如乙方不符合录用条件，甲方可提前三日通知解除合同，并支付乙方已工作期间的工资。'",
-                    "confidence_score": 0.95
+                    "risk_level": "high",
+                    "clause_text": "甲方可以随时解除本合同，无需支付任何经济补偿。",
+                    "risk_analysis": "该条款违反《劳动合同法》对解除劳动合同的法定条件要求，属于明显免除用人单位法定义务的无效条款。",
+                    "revision_suggestion": "建议改为：\"甲方解除劳动合同应符合法定条件，并依法履行通知或补偿义务。\""
                 }
             ]
         }
@@ -131,14 +118,10 @@ class ContractReviewResponse(BaseModel):
                     "contract_id": "contract_001",
                     "risks": [
                         {
-                            "risk_level": "高风险",
-                            "original_clause": "第五条 乙方在试用期内...",
-                            "original_text_quote": "甲方可随时解除劳动合同",
-                            "risk_explanation": "这是典型的霸王条款...",
-                            "legal_basis": ["《劳动合同法》第二十一条：..."],
-                            "legal_basis_links": ["http://www.npc.gov.cn/..."],
-                            "revise_suggestion": "建议修改为...",
-                            "confidence_score": 0.95
+                            "risk_level": "high",
+                            "clause_text": "甲方可以随时解除本合同，无需支付任何经济补偿。",
+                            "risk_analysis": "该条款明显免除了用人单位法定义务，可能被认定无效。",
+                            "revision_suggestion": "建议改为：解除劳动合同需符合法定条件并依法补偿。"
                         }
                     ],
                     "overall_summary": "该合同存在3处高风险条款，主要集中在试用期解除、违约责任和竞业限制方面...",
@@ -173,7 +156,7 @@ class ReviewTaskStatusResponse(BaseModel):
 
 
 class AgentArgument(BaseModel):
-    """智能体论点模型"""
+    """智能体论点模型（兼容旧版 Supervisor 输出）"""
     agent_role: str = Field(..., description="智能体角色")
     argument: str = Field(..., description="论点内容")
     legal_basis: List[str] = Field(default_factory=list, description="法律依据")
@@ -181,43 +164,10 @@ class AgentArgument(BaseModel):
 
 
 class DebateResponse(BaseModel):
-    """多智能体辩论响应模型"""
+    """多智能体辩论响应模型（兼容旧版接口）"""
     case_description: str = Field(..., description="案情描述")
     plaintiff_argument: AgentArgument = Field(..., description="原告方论点")
     defendant_argument: AgentArgument = Field(..., description="被告方论点")
     judge_opinion: AgentArgument = Field(..., description="法官意见")
     win_probability: dict = Field(..., description="胜诉概率预测")
     debate_timestamp: datetime = Field(default_factory=datetime.now, description="辩论时间戳")
-    
-    model_config = {
-        "json_schema_extra": {
-            "examples": [
-                {
-                    "case_description": "员工因拒绝加班被公司辞退...",
-                    "plaintiff_argument": {
-                        "agent_role": "原告律师",
-                        "argument": "公司违法解除劳动合同...",
-                        "legal_basis": ["《劳动合同法》第39条"],
-                        "key_points": ["公司未证明员工严重违纪", "加班应征得员工同意"]
-                    },
-                    "defendant_argument": {
-                        "agent_role": "被告律师",
-                        "argument": "员工严重违反公司规章制度...",
-                        "legal_basis": ["《劳动合同法》第4条"],
-                        "key_points": ["公司规章制度合法有效", "员工多次拒绝工作安排"]
-                    },
-                    "judge_opinion": {
-                        "agent_role": "法官",
-                        "argument": "综合双方证据和法律规定...",
-                        "legal_basis": ["《劳动合同法》第39条、第87条"],
-                        "key_points": ["关键在于加班是否合理", "公司举证责任"]
-                    },
-                    "win_probability": {
-                        "plaintiff": 0.65,
-                        "defendant": 0.35
-                    },
-                    "debate_timestamp": "2026-03-07T16:00:00Z"
-                }
-            ]
-        }
-    }

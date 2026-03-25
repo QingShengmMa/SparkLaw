@@ -56,7 +56,14 @@ class DocumentParser:
         try:
             # 读取文件内容
             content = await file.read()
-            
+
+            # 拒绝 0 字节文件
+            if len(content) == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="文件内容为空（0 字节），请上传有效的合同文件"
+                )
+
             # 根据文件类型选择解析方法
             if file_ext == ".pdf":
                 text = self._parse_pdf(content)

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.logger import app_logger
-from app.routers import health_router, legal_router, document_router, analysis_router
+from app.api.v1.routes import health_router, legal_router, document_router, analysis_router, legal_tools_router
 
 
 @asynccontextmanager
@@ -48,6 +48,7 @@ app.include_router(health_router, prefix=settings.API_PREFIX)
 app.include_router(legal_router, prefix=settings.API_PREFIX)
 app.include_router(document_router, prefix=settings.API_PREFIX)
 app.include_router(analysis_router, prefix=settings.API_PREFIX)
+app.include_router(legal_tools_router, prefix=settings.API_PREFIX)
 
 
 @app.get("/", tags=["根路径"])

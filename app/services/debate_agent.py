@@ -4,15 +4,17 @@
 支持流式输出和动作标签注入
 """
 
+import asyncio
 import json
 import re
 from typing import Dict, List, TypedDict, Annotated, Literal
 from operator import add
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
 from app.core.config import settings
 from app.core.logger import app_logger
-from app.services.llm_factory import LLMFactory
+from app.llm.factory import LLMFactory
 from app.models.response import DebateResponse, AgentArgument
 
 
@@ -177,8 +179,28 @@ class AceAttorneyDebateAgent:
     def __init__(self):
         """初始化辩论引擎"""
         self.llm = LLMFactory.create_llm()
+        self.checkpointer = self._create_checkpointer()
         self.graph = self._build_graph()
         app_logger.info("⚖️  AceAttorneyDebateAgent 初始化完成（LangGraph 版本）")
+
+    def _create_checkpointer(self):
+        try:
+            from langgraph.checkpoint.redis.aio import AsyncRedisSaver
+            saver = AsyncRedisSaver.from_conn_string(settings.REDIS_URL)
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._setup_async_checkpointer(saver))
+            except RuntimeError:
+                asyncio.run(self._setup_async_checkpointer(saver))
+            return saver
+        except Exception as e:
+            app_logger.warning(f"DebateAgent Redis Checkpointer 不可用，回退 MemorySaver: {str(e)}")
+            return MemorySaver()
+
+    async def _setup_async_checkpointer(self, saver) -> None:
+        setup = getattr(saver, "setup", None)
+        if callable(setup):
+            await setup()
     
     def _build_graph(self) -> StateGraph:
         """构建 LangGraph 状态机"""
@@ -195,7 +217,7 @@ class AceAttorneyDebateAgent:
         workflow.add_edge("defendant", "judge")
         workflow.add_edge("judge", END)
         
-        return workflow.compile()
+        return workflow.compile(checkpointer=self.checkpointer)
     
     async def _plaintiff_node(self, state: DebateState) -> Dict:
         """原告律师节点"""

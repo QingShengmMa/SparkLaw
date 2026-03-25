@@ -1,125 +1,94 @@
+<div align="center">
+  <img src="showcase/branding/sparklaw-logo.png" alt="SparkLaw Logo" width="120" />
+
 # SparkLaw
 
-An engineering-oriented AI legal assistant for Chinese legal scenarios.
+**Open-Source AI Legal Agent**
+
+Legal AI for everyone: **Legal Chat · Legal Tools · Mock Court**
+
+English · [中文](./README.md)
+
+<p>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-0ea5e9.svg" alt="MIT License" /></a>
+  <a href="https://github.com/QingShengmMa/SparkLaw/pulls"><img src="https://img.shields.io/badge/PRs-Welcome-22c55e.svg" alt="PRs Welcome" /></a>
+  <a href="https://github.com/QingShengmMa/SparkLaw/stargazers"><img src="https://img.shields.io/github/stars/QingShengmMa/SparkLaw?style=social" alt="GitHub Stars" /></a>
+  <a href="https://github.com/QingShengmMa/SparkLaw/issues"><img src="https://img.shields.io/github/issues/QingShengmMa/SparkLaw" alt="Issues" /></a>
+</p>
+</div>
 
 ---
 
-## Main Functions
+## UI Showcase
 
-- **Ask legal questions in plain language**  
-  You can describe your issue naturally (labor disputes, rental conflicts, contract breach), and the system returns structured, easy-to-read guidance.
+### 1) Landing
 
-- **Automatic contract risk review**  
-  After uploading a contract, SparkLaw highlights risky clauses and explains what is risky and how to revise it.
+<p align="center">
+  <img src="showcase/screenshots/landing.png" alt="SparkLaw Landing" width="92%" />
+</p>
 
-- **Courtroom-style scenario simulation**  
-  The system can analyze a case from different perspectives (plaintiff/defendant/judge), helping users understand likely dispute points.
+### 2) Legal Chat
 
-- **Real-time answer streaming**  
-  Instead of waiting for a full block of text, users can see progressive output and follow the reasoning process step by step.
+<p align="center">
+  <img src="showcase/screenshots/legal-chat.png" alt="SparkLaw Legal Chat" width="92%" />
+</p>
 
-- **Built-in quality evaluation**  
-  The project includes offline evaluation scripts to keep quality improvements measurable and repeatable.
+### 3) Contract Review
 
----
+<p align="center">
+  <img src="showcase/screenshots/contract-review.png" alt="SparkLaw Contract Review" width="92%" />
+</p>
 
-## Implemented scope (v1.0.0)
+### 4) Legal Calculator
 
-### 1) Legal chat with LangGraph ReAct tool loop
+<p align="center">
+  <img src="showcase/screenshots/legal-calculator.png" alt="SparkLaw Legal Calculator" width="92%" />
+</p>
 
-Workflow:
-- `agent` node: reasoning and tool selection
-- `tools` node: actual execution via `ToolNode`
-- conditional edge:
-  - with `tool_calls` -> `tools`
-  - without `tool_calls` -> `END`
-- tool outputs are appended as `ToolMessage` for the next reasoning turn
-- tool errors are converted to recoverable observations
+### 5) Document Drafting
 
-### 2) Retrieval with Advanced RAG
+<p align="center">
+  <img src="showcase/screenshots/document-drafting.png" alt="SparkLaw Document Drafting" width="92%" />
+</p>
 
-Current path:
+### Mock Court (GIF)
 
-`raw query -> query rewrite -> vector recall (Top-15) -> rerank -> final Top-3`
-
-Key modules:
-- `query_rewriter.py`: maps colloquial legal queries into retrieval-friendly legal terms
-- `reranker.py`: lightweight local cross-encoder with external API extension point
-- `rag_service.py`: orchestrates the full retrieval pipeline and fallback behavior
-
-### 3) Supervisor-style multi-agent analysis
-
-`supervisor_agent.py` introduces dispatch-and-review orchestration:
-- Supervisor handles routing and validation
-- Workers specialize in legal research, contract analysis, and litigation strategy
-- Supervisor can accept, rework, or reassign before finalizing output
-
-### 4) Async processing for long-running tasks
-
-Contract review supports Celery + Redis to avoid blocking request threads.
-
-### 5) Offline evaluation support
-
-`eval/` includes:
-- dataset generation
-- LLM-as-a-Judge scoring
-- markdown/json report generation
+<p align="center">
+  <img src="showcase/gifs/mock-court.gif" alt="SparkLaw Mock Court GIF" width="92%" />
+</p>
 
 ---
 
-## Stack
+## Core Features
 
-### Backend
-- FastAPI
-- LangChain + LangGraph
-- ChromaDB
-- sentence-transformers
-- Celery + Redis
-
-### Frontend
-- Next.js 14
-- TypeScript
-- Zustand
+- **Legal Chat**: multi-turn legal Q&A for Chinese legal scenarios.
+- **Legal Tools**: contract review, document drafting, and legal calculators.
+- **Mock Court**: multi-role courtroom simulation with post-hearing review.
 
 ---
 
-## Repository layout (core)
+## Quick Start
 
-```text
-app/
-  routers/
-  services/
-    legal_agent.py         # ReAct + ToolNode orchestration
-    rag_service.py         # Advanced RAG orchestration
-    retrieval/
-      query_rewriter.py
-      reranker.py
-    supervisor_agent.py
-    multimodal_contract_reviewer.py
-  core/
+### 1) Requirements
+- Python 3.10+
+- Node.js 18+
+- npm 9+
+- Redis (optional, for async tasks)
 
-frontend/src/
-  app/
-  components/
-  lib/api.ts
-  store/chatStore.ts
+### 2) Clone
 
-eval/
-  generate_eval_dataset.py
-  run_evaluation.py
+```bash
+git clone https://github.com/QingShengmMa/SparkLaw.git
+cd SparkLaw
 ```
 
----
-
-## Quick start
-
-### Backend
+### 3) Backend (FastAPI)
 
 ```bash
 python -m venv venv
 # Windows
 venv\Scripts\activate
-# macOS/Linux
+# macOS / Linux
 # source venv/bin/activate
 
 pip install -r requirements.txt
@@ -127,7 +96,7 @@ cp .env.example .env
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Frontend
+### 4) Frontend (Next.js)
 
 ```bash
 cd frontend
@@ -136,43 +105,82 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-### Optional async worker
+Open: `http://localhost:3000`
+
+### 5) Optional Worker
 
 ```bash
-celery -A app.celery_app.celery_app worker --loglevel=info
+celery -A app.workers.celery_app worker --loglevel=info
 ```
 
 ---
 
-## Selected API endpoints
+## Environment Variables (Minimal)
 
-- `POST /api/legal/chat`
-- `POST /api/legal/chat/stream`
-- `POST /api/document/upload`
-- `POST /api/document/retrieve`
-- `POST /api/analysis/*`
+Backend `.env`:
 
-OpenAPI docs: `http://localhost:8000/docs`
+```bash
+OPENAI_API_KEY=sk-xxx
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o-mini
+REDIS_URL=redis://localhost:6379/0
+```
+
+Frontend `frontend/.env.local`:
+
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
 
 ---
 
-## Engineering notes
+## Tech Stack
 
-- First startup may download embedding/reranker model files.
-- Retrieval remains available when reranker is unavailable (fallback to vector ranking).
-- Current session-state approach optimizes iteration speed; production deployment should externalize persistence.
+| Layer | Stack |
+|---|---|
+| Frontend | Next.js 16, TypeScript, Tailwind CSS |
+| Backend | FastAPI, Pydantic, SSE |
+| Agent / Orchestration | LangChain, LangGraph |
+| Retrieval | ChromaDB, RAG, Reranker |
+| Async | Celery, Redis |
 
 ---
 
-## Practical roadmap
+## Project Structure (Brief)
 
-- Hybrid retrieval (BM25 + dense fusion)
-- Structured supervisor evaluation rubric
-- CI regression gate for evaluation metrics
-- Stronger state persistence and observability
+```text
+SparkLaw/
+├─ app/                          # FastAPI backend
+│  ├─ api/v1/routes/             # routes
+│  ├─ services/                  # services (review/court/chat)
+│  ├─ tools/calculators/         # calculator strategies
+│  └─ orchestration/workflows/   # LangGraph workflows
+├─ frontend/                     # Next.js frontend
+│  └─ src/app/                   # route pages
+├─ showcase/                     # README media assets
+├─ README.md
+└─ README_EN.md
+```
+
+---
+
+## Contributing
+
+Issues and PRs are welcome.
+
+1. Fork this repository
+2. Create a branch: `feat/xxx` or `fix/xxx`
+3. Commit and push
+4. Open a Pull Request
+
+Detailed guide: `CONTRIBUTING.md`
 
 ---
 
 ## License
 
-MIT
+Licensed under the [MIT License](./LICENSE).
+
+<div align="center">
+If SparkLaw helps you, please consider giving it a ⭐
+</div>

@@ -1,26 +1,7 @@
 """
-Celery 应用配置
-使用 Redis 作为 Broker 和 Result Backend
+兼容层：从新路径重新导出 celery_app。
+实际实现已迁移至 app/workers/celery_app.py
 """
+from app.workers.celery_app import celery_app
 
-from celery import Celery
-from app.core.config import settings
-
-
-celery_app = Celery(
-    "sparklaw",
-    broker=settings.CELERY_BROKER_URL,
-    backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.services.multimodal_contract_reviewer"],
-)
-
-celery_app.conf.update(
-    task_serializer="json",
-    result_serializer="json",
-    accept_content=["json"],
-    timezone="Asia/Shanghai",
-    enable_utc=False,
-    task_track_started=True,
-    task_time_limit=600,
-    task_soft_time_limit=540,
-)
+__all__ = ["celery_app"]

@@ -10,6 +10,7 @@ class ChatRequest(BaseModel):
     """聊天请求模型"""
     question: str = Field(..., description="用户问题", min_length=1, max_length=1000)
     session_id: str = Field(default="default", description="会话ID")
+    thread_id: Optional[str] = Field(default=None, description="LangGraph Thread ID，用于跨轮状态持久化")
     jurisdiction: Optional[str] = Field(default="中国", description="法律辖区")
     personality: Literal["machine", "empathy", "cost", "cost_expert", "aggressive", "educator"] = Field(
         default="empathy",
@@ -22,6 +23,7 @@ class ChatRequest(BaseModel):
                 {
                     "question": "什么是劳动合同的试用期？",
                     "session_id": "user_123",
+                    "thread_id": "thread_abc123",
                     "jurisdiction": "中国",
                     "personality": "empathy"
                 }

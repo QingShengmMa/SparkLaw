@@ -1,27 +1,7 @@
 """
-健康检查路由
+兼容层：重新导出健康检查路由。
+实际实现在 app/api/v1/routes/health.py
 """
+from app.api.v1.routes.health import router
 
-from fastapi import APIRouter
-from app.models.response import HealthResponse
-from app.core.config import settings
-from app.services.llm_factory import LLMFactory
-
-router = APIRouter(prefix="/health", tags=["健康检查"])
-
-
-@router.get("", response_model=HealthResponse, summary="健康检查")
-async def health_check():
-    """
-    健康检查接口
-    
-    返回服务状态、版本信息和 LLM 配置
-    """
-    llm_config = settings.get_llm_config()
-    
-    return HealthResponse(
-        status="healthy",
-        version=settings.APP_VERSION,
-        llm_mode=llm_config["mode"],
-        llm_model=llm_config["model"]
-    )
+__all__ = ["router"]
