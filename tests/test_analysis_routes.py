@@ -57,7 +57,7 @@ def test_review_contract_status_success(monkeypatch):
     """任务 SUCCESS 时应返回 success + result。"""
 
     class DummyAsyncResult:
-        def __init__(self, task_id, _app=None):
+        def __init__(self, task_id, app=None, **_kwargs):
             self.state = "SUCCESS"
             self.result = {
                 "contract_id": "contract_001",
