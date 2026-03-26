@@ -49,7 +49,7 @@ const LandingPage = () => {
 
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4">
         <div className="text-center max-w-4xl mx-auto mb-10">
-          <h1 className="text-6xl md:text-8xl font-extrabold tracking-tight leading-tight text-slate-900 dark:text-slate-100 mb-4">
+          <h1 className="landing-hero-h1 text-[3rem] md:text-[4.5rem] font-extrabold tracking-tight leading-tight text-slate-900 dark:text-slate-100 mb-4">
             让法律服务
             <br className="md:hidden" />
             <span
@@ -59,8 +59,8 @@ const LandingPage = () => {
               触手可及
             </span>
           </h1>
-          <p className="text-lg md:text-xl text-slate-500 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed font-medium">
-            致力于用纯粹的技术，为你提供优质的法律智能体验。
+          <p className="text-sm md:text-base text-slate-500 dark:text-slate-400 max-w-2xl mx-auto leading-relaxed font-medium">
+            致力于用纯粹的技术，为你提供优质的法律智能体验
           </p>
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-5">

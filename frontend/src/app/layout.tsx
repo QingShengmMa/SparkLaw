@@ -21,6 +21,11 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href={notoSerifSCLink} rel="stylesheet" />
+        <style dangerouslySetInnerHTML={{ __html: `
+          html, body { overflow: hidden; height: 100%; }
+          .landing-hero-h1 { font-size: 3rem !important; line-height: 1.1 !important; }
+          @media (min-width: 768px) { .landing-hero-h1 { font-size: 4.5rem !important; } }
+        ` }} />
       </head>
       <body className="font-sans bg-[#FDFDFF] text-[#1F1F1F] dark:bg-[#0B0D14] dark:text-gray-100 transition-colors duration-300 ease-in-out">
         {/* 全局 Dashboard 布局 */}

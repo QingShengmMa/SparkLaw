@@ -1,0 +1,72 @@
+# ── Python / Backend ──────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Testing & quality
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.hypothesis/
+eval/
+tests/
+
+# ── Frontend ──────────────────────────────────────────────────
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env*.local
+frontend/.vercel
+frontend/npm-debug.log*
+
+# ── Secrets & environment ────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Runtime data (mounted as volumes) ───────────────────────
+logs/
+data/
+chroma_db/
+
+# ── IDE / OS ─────────────────────────────────────────────────
+.vscode/
+.idea/
+.cursor/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ── Git ──────────────────────────────────────────────────────
+.git/
+.gitignore
+.github/
+
+# ── Docs / showcase ──────────────────────────────────────────
+showcase/
+docs/
+*.md
+!README.md
+
+# ── Misc ─────────────────────────────────────────────────────
+*.log
+*.tmp
+*.temp
+.cache/
+celerybeat-schedule
+celerybeat.pid

@@ -1,7 +1,29 @@
-version: '3.8'
+# =============================================================
+# SparkLaw — Docker Compose
+# 一键启动：docker compose up -d --build
+# =============================================================
+
+version: '3.9'
 
 services:
-  # FastAPI 后端服务
+
+  # ── Redis（会话 / Celery broker）─────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: sparklaw-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks:
+      - sparklaw-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI 后端 ──────────────────────────────────────────────
   backend:
     build:
       context: .
@@ -9,47 +31,80 @@ services:
     container_name: sparklaw-backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     environment:
-      - LLM_MODE=${LLM_MODE:-local}
+      # App
+      - APP_NAME=SparkLaw
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # LLM
+      - LLM_MODE=${LLM_MODE:-cloud}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE:-0.3}
+      - OPENAI_MAX_TOKENS=${OPENAI_MAX_TOKENS:-2048}
+      # Ollama (local mode)
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
-      - OPENAI_MODEL=${OPENAI_MODEL}
-      - APP_NAME=SparkLaw
-      - DEBUG=false
-      - LOG_LEVEL=INFO
+      # CORS
+      - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost:3000","http://127.0.0.1:3000"]}
+      # Redis / Celery
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      # Vector DB
+      - CHROMA_PERSIST_DIR=/app/data/chroma
+      - ENABLE_SEMANTIC_MEMORY=${ENABLE_SEMANTIC_MEMORY:-false}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-small-zh-v1.5}
+      # Jurisdiction
+      - DEFAULT_JURISDICTION=${DEFAULT_JURISDICTION:-中国}
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
+      - backend_data:/app/data
+      - backend_logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - sparklaw-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
 
-  # Next.js 前端服务（可选）
+  # ── Next.js 前端（生产构建）───────────────────────────────────
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     container_name: sparklaw-frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     environment:
-      - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - sparklaw-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
 
 networks:
   sparklaw-network:
     driver: bridge
 
 volumes:
-  data:
-  logs:
+  redis_data:
+  backend_data:
+  backend_logs:

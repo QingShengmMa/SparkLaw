@@ -170,7 +170,7 @@ export default function EvidenceDrawer({
               <select
                 value={party}
                 onChange={(e) => setParty(e.target.value as TabKey)}
-                className="w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+                className="w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
               >
                 <option value="plaintiff">归属方：原告</option>
                 <option value="defendant">归属方：被告</option>
@@ -179,14 +179,14 @@ export default function EvidenceDrawer({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="证据名称（如：微信聊天记录截图）"
-                className="w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+                className="w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
               />
               <textarea
                 value={desc}
                 onChange={(e) => setDesc(e.target.value)}
                 placeholder="证据描述（如：显示被告于2024年3月承诺退还押金）"
                 rows={4}
-                className="w-full resize-none rounded border border-zinc-300 bg-white px-2 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+                className="w-full resize-none rounded border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-800 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
               />
               <button
                 type="button"

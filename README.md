@@ -9,6 +9,7 @@
   <a href="https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white"><img src="https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white" alt="FastAPI" /></a>
   <a href="https://img.shields.io/badge/Next.js-Frontend-000000?logo=nextdotjs"><img src="https://img.shields.io/badge/Next.js-Frontend-000000?logo=nextdotjs" alt="Next.js" /></a>
   <a href="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python" /></a>
+  <img src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker Ready" />
   <a href="https://github.com/QingShengmMa/SparkLaw/pulls"><img src="https://img.shields.io/badge/PRs-Welcome-22c55e.svg" alt="PRs Welcome" /></a>
   <a href="https://github.com/QingShengmMa/SparkLaw/stargazers"><img src="https://img.shields.io/github/stars/QingShengmMa/SparkLaw?style=social" alt="GitHub Stars" /></a>
 </p>
@@ -183,33 +184,98 @@ SparkLaw/
 
 ## 🚀 快速开始
 
-### 前置要求
+提供两种部署方式，推荐优先使用 Docker，无需手动配置环境。
 
-- Python 3.10+
-- Node.js 18+
-- （可选）Redis 6+
-- （可选）Ollama（本地模型模式）
+---
 
-### 1) 克隆项目
+### 方式一：Docker 一键部署（推荐）
+
+**前提：** 安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)（已内置 Docker Compose）。
+
+#### 1. 克隆仓库
 
 ```bash
 git clone https://github.com/QingShengmMa/SparkLaw.git
 cd SparkLaw
 ```
 
-### 2) 配置环境变量
+#### 2. 配置环境变量
 
 ```bash
-# backend
+cp .env.example .env
+# 用编辑器打开 .env，至少填写以下字段：
+# OPENAI_API_KEY=sk-your_key_here
+# OPENAI_BASE_URL=https://api.openai.com/v1   # 支持 DeepSeek / Qwen 等兼容接口
+# OPENAI_MODEL=gpt-4o-mini
+```
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `LLM_MODE` | `cloud`（OpenAI 兼容）或 `local`（Ollama） | `cloud` |
+| `OPENAI_API_KEY` | 你的 API Key | — |
+| `OPENAI_BASE_URL` | API 地址 | `https://api.openai.com/v1` |
+| `OPENAI_MODEL` | 模型名 | `gpt-4o-mini` |
+| `OLLAMA_BASE_URL` | 本地 Ollama 地址（local 模式） | `http://host.docker.internal:11434` |
+
+#### 3. 一键启动
+
+```bash
+docker compose up -d --build
+```
+
+首次构建约需 3–8 分钟（视网速），之后重启只需数秒。
+
+#### 4. 访问项目
+
+| 服务 | 地址 |
+|------|------|
+| 🌐 前端界面 | http://localhost:3000 |
+| ⚙️ 后端 API | http://localhost:8000 |
+| 📖 API 文档 | http://localhost:8000/docs |
+
+#### 常用命令
+
+```bash
+# 查看实时日志
+docker compose logs -f
+
+# 仅查看某个服务
+docker compose logs -f backend
+docker compose logs -f frontend
+
+# 停止服务
+docker compose down
+
+# 停止并清除数据卷（完全重置）
+docker compose down -v
+```
+
+---
+
+### 方式二：本地手动部署
+
+**前置要求：** Python 3.10+、Node.js 18+、（可选）Redis 6+、（可选）Ollama
+
+#### 1. 克隆项目
+
+```bash
+git clone https://github.com/QingShengmMa/SparkLaw.git
+cd SparkLaw
+```
+
+#### 2. 配置环境变量
+
+```bash
+# 后端
 cp .env.example .env
 
-# frontend
+# 前端
 cd frontend
 cp .env.local.example .env.local
 cd ..
 ```
 
-### 3) 启动后端
+#### 3. 启动后端
 
 ```bash
 python -m venv venv
@@ -222,7 +288,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 4) 启动前端
+#### 4. 启动前端
 
 ```bash
 cd frontend
@@ -231,23 +297,6 @@ npm run dev
 ```
 
 访问：`http://localhost:3000`
-
----
-
-## ⚙️ 关键环境变量说明
-
-| 变量名 | 说明 | 示例 |
-|---|---|---|
-| `LLM_MODE` | 模型模式：`local` / `cloud` | `cloud` |
-| `OPENAI_API_KEY` | 云端模型密钥 | `sk-***` |
-| `OPENAI_BASE_URL` | OpenAI 兼容网关 | `https://api.openai.com/v1` |
-| `OPENAI_MODEL` | 云端模型名称 | `gpt-4o-mini` |
-| `OLLAMA_BASE_URL` | 本地 Ollama 地址 | `http://localhost:11434` |
-| `OLLAMA_MODEL` | 本地模型名称 | `qwen2.5:7b` |
-| `REDIS_URL` | Redis 主连接 | `redis://localhost:6379/0` |
-| `NEXT_PUBLIC_API_URL` | 前端后端地址 | `http://localhost:8000` |
-
-完整配置请参考：`.env.example` 与 `frontend/.env.local.example`。
 
 ---
 

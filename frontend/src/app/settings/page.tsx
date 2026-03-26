@@ -184,7 +184,7 @@ export default function SettingsPage() {
               <div>
                 <h1 className="text-lg font-semibold font-serif">通用</h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  选择 AI 的回答风格和人格特征
+                  选择普法问答中 SparkLaw 的回答风格和人格特征
                 </p>
               </div>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   Scale, Gavel, Users, Shield, Zap,
   MessageSquare, Plus, Trash2, ArrowLeft, Award,
@@ -44,8 +44,8 @@ interface ChatMsg {
   role: 'judge' | 'plaintiff' | 'defendant' | 'system' | 'user';
   name: string; content: string; isFollowUp?: boolean;
 }
-interface LawRefItem { id: string; title: string; content: string; source?: string; }
-interface EvidenceRefItem { id: string; title: string; content: string; source?: string; }
+interface LawRefItem { id: string; title: string; content: string; source?: string; party?: 'plaintiff' | 'defendant' | 'both'; }
+interface EvidenceRefItem { id: string; title: string; content: string; source?: string; party?: 'plaintiff' | 'defendant' | 'both'; }
 interface HoverRefOptions {
   onRefHover?: (type: '证据' | '法条', value: string) => void;
   onRefLeave?: () => void;
@@ -54,7 +54,12 @@ interface HoverRefOptions {
 }
 interface ReviewData {
   win_probability: { plaintiff: number; defendant: number };
-  summary: string; keyPoints: string[];
+  summary: string;
+  keyPoints: string[];
+  transcript?: ChatMsg[];
+  evidenceRefs?: EvidenceRefItem[];
+  lawRefs?: LawRefItem[];
+  scores?: { statute: number; logic: number; jury: number };
 }
 interface CaseExample {
   label: string;
@@ -150,20 +155,23 @@ function renderReadableMessage(raw: string, options?: HoverRefOptions): React.Re
     while ((match = regex.exec(line)) !== null) {
       if (match.index > lastIndex) nodes.push(line.slice(lastIndex, match.index));
       const type = match[1];
-      const value = match[2];
-      const detail = options?.resolveRefDetail?.(type as '证据' | '法条', value);
+      const rawValue = match[2];
+      // Resolve ID to human-readable title if possible
+      const detail = options?.resolveRefDetail?.(type as '证据' | '法条', rawValue);
+      const isRawId = /^(evidence|law|ev|evi)_?\d+$/i.test(rawValue);
+      const displayLabel = isRawId && detail ? detail.split('\n')[0] : rawValue;
       nodes.push(
         <span
-          key={`${type}-${value}-${match.index}`}
-          title={detail || `${type}:${value}`}
-          onMouseEnter={() => options?.onRefHover?.(type as '证据' | '法条', value)}
+          key={`${type}-${rawValue}-${match.index}`}
+          title={detail || `${type}:${rawValue}`}
+          onMouseEnter={() => options?.onRefHover?.(type as '证据' | '法条', rawValue)}
           onMouseLeave={() => options?.onRefLeave?.()}
-          onClick={() => options?.onRefClick?.(type as '证据' | '法条', value)}
+          onClick={() => options?.onRefClick?.(type as '证据' | '法条', rawValue)}
           className={type === '证据'
-            ? 'inline-flex mx-0.5 px-2 py-0.5 rounded-md text-[11px] font-semibold align-middle bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-pointer hover:bg-emerald-100'
-            : 'inline-flex mx-0.5 px-2 py-0.5 rounded-md text-[11px] font-semibold align-middle bg-indigo-50 text-indigo-700 border border-indigo-200 cursor-pointer hover:bg-indigo-100'}
+            ? 'inline-flex mx-0.5 px-2 py-0.5 rounded-md text-[11px] font-semibold align-middle bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-pointer hover:bg-emerald-100 dark:bg-emerald-900/25 dark:text-emerald-200 dark:border-emerald-700/60 dark:hover:bg-emerald-900/40'
+            : 'inline-flex mx-0.5 px-2 py-0.5 rounded-md text-[11px] font-semibold align-middle bg-indigo-50 text-indigo-700 border border-indigo-200 cursor-pointer hover:bg-indigo-100 dark:bg-indigo-900/25 dark:text-indigo-200 dark:border-indigo-700/60 dark:hover:bg-indigo-900/40'}
         >
-          {type}:{value}
+          {type}:{displayLabel}
         </span>
       );
       lastIndex = match.index + match[0].length;
@@ -281,7 +289,7 @@ function SetupView({ caseDesc, setCaseDesc, userRole, setUserRole, evidence, add
           <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center"><Users className="w-5 h-5 mr-2 text-blue-600"/> 第二步：选择庭审参与身份</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {([{id:'plaintiff',label:'原告代理人',desc:'围绕请求权基础进行主张与举证'},{id:'defendant',label:'被告代理人',desc:'围绕抗辩事由开展质证与反驳'},{id:'audience',label:'旁听席',desc:'以中立视角观测双方论证结构'}] as const).map(r => (
-              <div key={r.id} onClick={() => setUserRole(r.id)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${userRole===r.id?'border-blue-500 bg-blue-50/50 shadow-sm':'border-slate-100 hover:border-blue-200'}`}>
+              <div key={r.id} onClick={() => setUserRole(r.id)} className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${userRole===r.id?'border-blue-500 bg-blue-50/50 dark:bg-blue-900/25 shadow-sm':'border-slate-100 dark:border-slate-700 hover:border-blue-200 dark:hover:border-blue-500/50 bg-white dark:bg-slate-900/80'}`}>
                 <div className="font-bold text-slate-800 dark:text-slate-100 mb-1">{r.label}</div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">{r.desc}</div>
                 {userRole===r.id && <CheckCircle2 className="w-5 h-5 text-blue-600 mt-2"/>}
@@ -339,7 +347,7 @@ function SetupView({ caseDesc, setCaseDesc, userRole, setUserRole, evidence, add
             {userRole !== 'plaintiff' && (
               <div>
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-200 block mb-2">原告风格</label>
-                <select value={aiPersonas.plaintiff} onChange={e => setAiPersonas({ ...aiPersonas, plaintiff: e.target.value })} className="w-full p-2.5 text-sm border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none">
+                <select value={aiPersonas.plaintiff} onChange={e => setAiPersonas({ ...aiPersonas, plaintiff: e.target.value })} className="w-full p-2.5 text-sm border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
                   {PARTY_STYLES.map(s => <option key={s}>{s}</option>)}
                 </select>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">当前：{PARTY_STYLE_DESC[aiPersonas.plaintiff]}</p>
@@ -349,7 +357,7 @@ function SetupView({ caseDesc, setCaseDesc, userRole, setUserRole, evidence, add
             {userRole !== 'defendant' && (
               <div>
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-200 block mb-2">被告风格</label>
-                <select value={aiPersonas.defendant} onChange={e => setAiPersonas({ ...aiPersonas, defendant: e.target.value })} className="w-full p-2.5 text-sm border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none">
+                <select value={aiPersonas.defendant} onChange={e => setAiPersonas({ ...aiPersonas, defendant: e.target.value })} className="w-full p-2.5 text-sm border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
                   {PARTY_STYLES.map(s => <option key={s}>{s}</option>)}
                 </select>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">当前：{PARTY_STYLE_DESC[aiPersonas.defendant]}</p>
@@ -358,7 +366,7 @@ function SetupView({ caseDesc, setCaseDesc, userRole, setUserRole, evidence, add
 
             <div>
               <label className="text-sm font-medium text-slate-700 dark:text-slate-200 block mb-2">法官风格</label>
-              <select value={aiPersonas.judge} onChange={e => setAiPersonas({...aiPersonas,judge:e.target.value})} className="w-full p-2.5 text-sm border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none">
+              <select value={aiPersonas.judge} onChange={e => setAiPersonas({...aiPersonas,judge:e.target.value})} className="w-full p-2.5 text-sm border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100">
                 {JUDGE_STYLES.map(s=><option key={s}>{s}</option>)}
               </select>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">当前：{JUDGE_STYLE_DESC[aiPersonas.judge]}</p>
@@ -416,6 +424,118 @@ function FullCaseLibraryModal({ onClose, onSelect }: { onClose: () => void; onSe
   );
 }
 
+function ResizableLeftSidebar({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  const [width, setWidth] = React.useState(288);
+  const dragging = React.useRef(false);
+  const startX = React.useRef(0);
+  const startW = React.useRef(0);
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    dragging.current = true;
+    startX.current = e.clientX;
+    startW.current = width;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  React.useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragging.current) return;
+      const delta = e.clientX - startX.current;
+      setWidth(Math.min(600, Math.max(200, startW.current + delta)));
+    };
+    const onUp = () => {
+      dragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, []);
+
+  return (
+    <aside
+      style={{ width }}
+      className="relative bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 hidden lg:flex flex-col shrink-0 overflow-hidden"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-2 shrink-0">
+        <span className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">庭审辅助面板</span>
+        <button onClick={onClose} className="p-1.5 rounded-md text-slate-400 dark:text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition" title="收起左侧栏">
+          <PanelLeftClose className="w-4 h-4"/>
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 pb-4 flex flex-col gap-4 min-h-0">
+        {children}
+      </div>
+      {/* Drag handle on right edge */}
+      <div
+        onMouseDown={onMouseDown}
+        className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-400/40 transition-colors z-10 group"
+      >
+        <div className="absolute right-0.5 top-1/2 -translate-y-1/2 w-0.5 h-8 bg-slate-300 dark:bg-slate-600 group-hover:bg-blue-500 rounded-full transition-colors" />
+      </div>
+    </aside>
+  );
+}
+
+function ResizableSidebar({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  const [width, setWidth] = React.useState(288);
+  const dragging = React.useRef(false);
+  const startX = React.useRef(0);
+  const startW = React.useRef(0);
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    dragging.current = true;
+    startX.current = e.clientX;
+    startW.current = width;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  React.useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragging.current) return;
+      const delta = startX.current - e.clientX;
+      setWidth(Math.min(600, Math.max(220, startW.current + delta)));
+    };
+    const onUp = () => {
+      dragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, []);
+
+  return (
+    <aside
+      style={{ width }}
+      className="relative bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-700 hidden xl:flex flex-col gap-4 shrink-0 overflow-hidden"
+    >
+      {/* Drag handle */}
+      <div
+        onMouseDown={onMouseDown}
+        className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-blue-400/40 transition-colors z-10 group"
+      >
+        <div className="absolute left-0.5 top-1/2 -translate-y-1/2 w-0.5 h-8 bg-slate-300 dark:bg-slate-600 group-hover:bg-blue-500 rounded-full transition-colors" />
+      </div>
+      {/* Header with close */}
+      <div className="flex items-center justify-between px-4 pt-4 shrink-0">
+        <span className="text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">庭审辅助面板</span>
+        <button onClick={onClose} className="p-1.5 rounded-md text-slate-400 dark:text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition" title="收起右侧栏">
+          <PanelRightClose className="w-4 h-4"/>
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 pb-4 flex flex-col gap-4 min-h-0">
+        {children}
+      </div>
+    </aside>
+  );
+}
+
 function LiveView(props: {
   caseDesc: string; userRole: UserRole; chatHistory: ChatMsg[];
   chatEndRef: React.RefObject<HTMLDivElement>; isStreaming: boolean;
@@ -468,48 +588,68 @@ function LiveView(props: {
       </header>
       <div className="flex-1 flex overflow-hidden">
         {leftSidebarOpen ? (
-          <aside className="w-72 bg-white dark:bg-slate-900 border-r border-slate-200 p-4 overflow-y-auto hidden lg:flex flex-col gap-3 shrink-0">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center"><FileSearch className="w-4 h-4 mr-1.5 text-blue-500"/>证据审查面板</h3>
-              <button onClick={onToggleLeftSidebar} className="p-1.5 rounded-md text-slate-400 dark:text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition" title="收起左侧栏">
-                <PanelLeftClose className="w-4 h-4"/>
-              </button>
-            </div>
-            {evidence.plaintiff.filter(e => e.category || e.content).slice(0,3).map((ev,i) => (
-              <div key={i} className="bg-slate-50 dark:bg-slate-800 p-2.5 rounded-lg border border-slate-100">
-                <div className="text-xs font-medium text-slate-700 dark:text-slate-200 mb-1.5 truncate">原告证{i+1}：{ev.category || '未命名证据'}</div>
-                {ev.content && <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5 line-clamp-2">{ev.content}</p>}
-                <div className="flex flex-wrap gap-1">
-                  <span className="px-1.5 py-0.5 bg-green-50 text-green-700 rounded text-[10px] border border-green-200">真实性✓</span>
-                  <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded text-[10px] border border-amber-200">关联性存疑</span>
-                </div>
+          <ResizableLeftSidebar onClose={onToggleLeftSidebar}>
+            {/* 证据审查面板 */}
+            <div className="shrink-0">
+              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center mb-3"><FileSearch className="w-4 h-4 mr-1.5 text-blue-500"/>证据审查面板</h3>
+              <div className="grid grid-cols-2 gap-2">
+                {(['plaintiff','defendant'] as const).map(side => {
+                  const evList = evidence[side].filter(e => e.category || e.content);
+                  return (
+                    <div key={side}>
+                      <div className={`text-[10px] font-black uppercase tracking-wider mb-1.5 ${side==='plaintiff'?'text-blue-500':'text-red-500'}`}>
+                        {side==='plaintiff'?'原告证据':'被告证据'}
+                      </div>
+                      <div className="space-y-1.5">
+                        {evList.length===0 && <div className="text-[10px] text-slate-400 dark:text-slate-500">暂无</div>}
+                        {evList.map((ev,i) => (
+                          <div key={ev.id} className="bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-100 dark:border-slate-700">
+                            <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 truncate mb-1">
+                              {side==='plaintiff'?'原告':'被告'}证{i+1}：{ev.category||'未命名'}
+                            </div>
+                            {ev.content && <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-1.5 line-clamp-2">{ev.content}</p>}
+                            <div className="flex flex-wrap gap-1">
+                              <span className="px-1.5 py-0.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded text-[9px] border border-green-200 dark:border-green-700/40">真实性✓</span>
+                              <span className="px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 rounded text-[9px] border border-amber-200 dark:border-amber-700/40">关联性存疑</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-            {evidence.plaintiff.filter(e => e.category || e.content).length===0 && <p className="text-xs text-slate-400 dark:text-slate-500">暂无原告证据</p>}
-            <hr className="border-slate-100"/>
-            <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center"><Clock className="w-4 h-4 mr-1.5 text-blue-500"/>审理进程</h3>
-            <div className="relative border-l-2 border-slate-100 ml-2 space-y-3 pl-3">
-              {TRIAL_STAGES.map((stage, i) => {
-                const msg = stageMessageMap.get(stage);
-                const reached = i <= currentStageIndex;
-                const active = i === currentStageIndex;
-                return (
-                  <div key={stage} className="relative">
-                    <div className={`absolute -left-[17px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white ${active ? 'bg-blue-500' : reached ? 'bg-amber-400' : 'bg-slate-300'}`}/>
-                    <button
-                      type="button"
-                      disabled={!msg?.msgId}
-                      onClick={() => msg?.msgId && onJumpToMessage(msg.msgId)}
-                      className={`text-left w-full text-xs transition ${msg?.msgId ? 'text-slate-700 dark:text-slate-200 hover:text-blue-600 cursor-pointer' : 'text-slate-400 dark:text-slate-500 cursor-not-allowed'}`}
-                    >
-                      <span className={`font-semibold ${active ? 'text-blue-600' : ''}`}>{stage}</span>
-                      <span className="block mt-0.5 line-clamp-2">{msg ? `${toPlainDisplayText(msg.content).slice(0,38)}${toPlainDisplayText(msg.content).length>38?'...':''}` : '等待该阶段...'}</span>
-                    </button>
-                  </div>
-                );
-              })}
             </div>
-          </aside>
+
+            {/* 审理进程 */}
+            <div className="flex-1 min-h-0 flex flex-col">
+              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center mb-3 shrink-0"><Clock className="w-4 h-4 mr-1.5 text-blue-500"/>审理进程</h3>
+              <div className="relative border-l-2 border-slate-100 dark:border-slate-700 ml-2 space-y-3 pl-3 overflow-y-auto flex-1">
+                {TRIAL_STAGES.map((stage, i) => {
+                  const msg = stageMessageMap.get(stage);
+                  const reached = i <= currentStageIndex;
+                  const active = i === currentStageIndex;
+                  return (
+                    <div key={stage} className="relative">
+                      <div className={`absolute -left-[17px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-900 ${active ? 'bg-blue-500' : reached ? 'bg-amber-400' : 'bg-slate-300 dark:bg-slate-600'}`}/>
+                      <button
+                        type="button"
+                        disabled={!msg?.msgId}
+                        onClick={() => msg?.msgId && onJumpToMessage(msg.msgId)}
+                        className={`text-left w-full text-xs transition ${msg?.msgId ? 'text-slate-700 dark:text-slate-200 hover:text-blue-600 cursor-pointer' : 'text-slate-400 dark:text-slate-500 cursor-not-allowed'}`}
+                      >
+                        <span className={`font-semibold ${active ? 'text-blue-600' : ''}`}>{stage}</span>
+                        {active && <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 text-[9px] font-bold">进行中</span>}
+                        <span className="block mt-0.5 line-clamp-2 text-[10px]">
+                          {msg ? `${toPlainDisplayText(msg.content).slice(0,42)}${toPlainDisplayText(msg.content).length>42?'...':''}` : '等待该阶段...'}
+                        </span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </ResizableLeftSidebar>
         ) : (
           <div className="hidden lg:flex w-11 bg-white dark:bg-slate-900 border-r border-slate-200 items-start justify-center pt-4 shrink-0">
             <button onClick={onToggleLeftSidebar} className="p-1.5 rounded-md text-slate-400 dark:text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition" title="展开左侧栏">
@@ -556,7 +696,7 @@ function LiveView(props: {
               </div>
               <div className="flex items-end space-x-3">
                 <div className="flex-1 bg-white dark:bg-slate-900 border border-slate-300 rounded-xl focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all shadow-sm overflow-hidden">
-                  <textarea rows={3} className="w-full bg-transparent p-3 text-sm outline-none resize-none" placeholder="在此输入陈述意见，Enter 发送，Shift+Enter 换行..." value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => {if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();onSpeak();}}}/>
+                  <textarea rows={3} className="w-full bg-transparent p-3 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none resize-none" placeholder="在此输入陈述意见，Enter 发送，Shift+Enter 换行..." value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => {if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();onSpeak();}}}/>
                 </div>
                 <button onClick={onSpeak} disabled={!inputText.trim()} className={`h-[76px] px-6 rounded-xl font-medium transition flex items-center shadow-md ${inputText.trim()?'bg-blue-600 text-white hover:bg-blue-700':'bg-slate-100 dark:bg-slate-800/80 text-slate-300 cursor-not-allowed'}`}><MessageSquare className="w-5 h-5 mr-2"/>提交陈述</button>
               </div>
@@ -564,66 +704,116 @@ function LiveView(props: {
           )}
         </main>
         {rightSidebarOpen ? (
-          <aside className="w-72 bg-white dark:bg-slate-900 border-l border-slate-200 p-4 overflow-y-auto hidden xl:flex flex-col gap-5 shrink-0">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center"><Target className="w-4 h-4 mr-1.5 text-blue-500"/>AI表现评估</h3>
-              <button onClick={onToggleRightSidebar} className="p-1.5 rounded-md text-slate-400 dark:text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition" title="收起右侧栏">
-                <PanelRightClose className="w-4 h-4"/>
-              </button>
-            </div>
-            <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-100 space-y-3">
-              {(['法条适配度','逻辑严密性'] as const).map((label,i) => {
-                const val = i===0?scores.statute:scores.logic;
-                return (<div key={label}><div className="flex justify-between text-xs mb-1"><span className="text-slate-600 dark:text-slate-300">{label}</span><span className="text-blue-600 font-bold">{val>0?`${val}%`:'待评估'}</span></div><div className="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{width:`${val}%`}}/></div></div>);
-              })}
-            </div>
-            <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center"><Users className="w-4 h-4 mr-1.5 text-blue-500"/>陪审团预测</h3>
-            <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-100 text-center">
-              <div className={`text-3xl font-bold mb-1 ${scores.jury>0?'text-blue-600':'text-slate-300'}`}>{scores.jury>0?`${scores.jury}分`:'--'}</div>
-              <div className="text-[10px] text-slate-500 dark:text-slate-400">{scores.jury>0?'综合表现得分':'等待首轮发言...'}</div>
-            </div>
-
-            <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center"><FileSearch className="w-4 h-4 mr-1.5 text-emerald-500"/>证据卡片</h3>
-            <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
-              {evidenceRefs.length === 0 && <div className="text-[11px] text-slate-400">等待证据列表...</div>}
-              {evidenceRefs.map((ev) => {
-                const active = activeEvidenceId === ev.id;
-                return (
-                  <div
-                    id={`evidence-card-${ev.id}`}
-                    key={ev.id}
-                    className={`rounded-lg border p-2 transition ${active ? 'border-emerald-400 bg-emerald-50 shadow-sm' : 'border-slate-200 bg-white dark:bg-slate-800'}`}
-                  >
-                    <div className="text-[11px] font-semibold text-emerald-700">{ev.title || ev.id}</div>
-                    <div className="text-[10px] text-slate-500 mt-1 line-clamp-2">{toPlainDisplayText(ev.content)}</div>
+          <ResizableSidebar onClose={onToggleRightSidebar}>
+            {/* AI 表现评估 */}
+            <div className="shrink-0">
+              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center mb-2"><Target className="w-4 h-4 mr-1.5 text-blue-500"/>AI表现评估</h3>
+              <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 space-y-3">
+                {([{ label: '法条适配度', val: scores.statute, color: 'bg-indigo-500', icon: '⚖️' }, { label: '逻辑严密性', val: scores.logic, color: 'bg-blue-500', icon: '🧠' }]).map(({ label, val, color, icon }) => (
+                  <div key={label}>
+                    <div className="flex justify-between text-xs mb-1 items-center">
+                      <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1"><span>{icon}</span>{label}</span>
+                      <span className={`font-bold tabular-nums ${val > 0 ? 'text-blue-600' : 'text-slate-400 dark:text-slate-500'}`}>{val > 0 ? `${val}%` : '待评估'}</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                      <div className={`h-full ${color} rounded-full transition-all duration-700 ease-out`} style={{ width: `${val}%` }} />
+                    </div>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
-
-            <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center"><Scale className="w-4 h-4 mr-1.5 text-indigo-500"/>法条来源</h3>
-            <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
-              {lawRefs.length === 0 && <div className="text-[11px] text-slate-400">等待法条列表...</div>}
-              {lawRefs.map((law) => {
-                const active = activeLawId === law.id;
-                return (
-                  <div
-                    id={`law-card-${law.id}`}
-                    key={law.id}
-                    className={`rounded-lg border p-2 transition ${active ? 'border-indigo-400 bg-indigo-50 shadow-sm' : 'border-slate-200 bg-white dark:bg-slate-800'}`}
-                  >
-                    <div className="text-[11px] font-semibold text-indigo-700">{law.title || law.id}</div>
-                    <div className="text-[10px] text-slate-500 mt-1 line-clamp-2">{toPlainDisplayText(law.content)}</div>
+            {/* 陪审团预测 */}
+            <div className="shrink-0">
+              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center mb-2"><Users className="w-4 h-4 mr-1.5 text-blue-500"/>陪审团预测</h3>
+              <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 flex items-center gap-3">
+                <div className="relative w-14 h-14 shrink-0">
+                  <svg className="w-full h-full -rotate-90" viewBox="0 0 56 56">
+                    <circle cx="28" cy="28" r="22" stroke="currentColor" strokeOpacity="0.1" strokeWidth="5" fill="transparent" className="text-slate-400"/>
+                    <circle cx="28" cy="28" r="22"
+                      stroke={scores.jury >= 80 ? '#22c55e' : scores.jury >= 60 ? '#3b82f6' : scores.jury > 0 ? '#f59e0b' : '#cbd5e1'}
+                      strokeWidth="5" fill="transparent" strokeLinecap="round"
+                      strokeDasharray={`${2 * Math.PI * 22}`}
+                      strokeDashoffset={`${2 * Math.PI * 22 * (1 - scores.jury / 100)}`}
+                      style={{ transition: 'stroke-dashoffset 0.8s ease' }}
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className={`text-sm font-black ${scores.jury > 0 ? 'text-slate-800 dark:text-slate-100' : 'text-slate-300 dark:text-slate-600'}`}>{scores.jury > 0 ? scores.jury : '--'}</span>
                   </div>
-                );
-              })}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className={`text-sm font-bold truncate ${scores.jury >= 80 ? 'text-green-600' : scores.jury >= 60 ? 'text-blue-600' : scores.jury > 0 ? 'text-amber-600' : 'text-slate-400 dark:text-slate-500'}`}>
+                    {scores.jury >= 80 ? '说服力极强' : scores.jury >= 60 ? '论证有力' : scores.jury >= 40 ? '初步成型' : scores.jury > 0 ? '论证薄弱' : '等待首轮发言...'}
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{scores.jury > 0 ? '综合法条与逻辑预测' : '庭审开始后实时更新'}</div>
+                </div>
+              </div>
             </div>
 
-            <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-3">
-              <h4 className="text-xs font-bold text-blue-800 mb-2 flex items-center"><Zap className="w-3.5 h-3.5 mr-1 text-orange-500"/>战术建议</h4>
-              <p className="text-xs text-blue-700 leading-relaxed">{userRole==='defendant'?'建议核查原告证据关联性，从程序瑕疵角度提出质疑，准备替代性解释。':'建议强调证据链完整性，引用具体法条支撑主张。'}</p>
+            {/* 证据 — 双列 */}
+            <div className="flex-1 min-h-0 flex flex-col">
+              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center mb-2 shrink-0"><FileSearch className="w-4 h-4 mr-1.5 text-emerald-500"/>证据清单</h3>
+              <div className="grid grid-cols-2 gap-2 overflow-y-auto flex-1">
+                {(['plaintiff','defendant'] as const).map(side => {
+                  const sideEvidence = side === 'plaintiff'
+                    ? evidenceRefs.filter(e => e.party === 'plaintiff' || !e.party)
+                    : evidenceRefs.filter(e => e.party === 'defendant');
+                  return (
+                    <div key={side}>
+                      <div className={`text-[10px] font-black uppercase tracking-wider mb-1.5 ${side==='plaintiff'?'text-blue-500':'text-red-500'}`}>{side==='plaintiff'?'原告':'被告'}</div>
+                      <div className="space-y-1.5">
+                        {sideEvidence.length===0 && <div className="text-[10px] text-slate-400 dark:text-slate-500">暂无</div>}
+                        {sideEvidence.map(ev => {
+                          const active = activeEvidenceId===ev.id;
+                          return (
+                            <div id={`evidence-card-${ev.id}`} key={ev.id} className={`rounded-lg border p-1.5 transition cursor-pointer ${active?'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 shadow-sm':'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-emerald-300'}`}>
+                              <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 truncate">{ev.title||ev.id}</div>
+                              <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{toPlainDisplayText(ev.content)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </aside>
+
+            {/* 法条 — 双列 */}
+            <div className="flex-1 min-h-0 flex flex-col">
+              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center mb-2 shrink-0"><Scale className="w-4 h-4 mr-1.5 text-indigo-500"/>法条来源</h3>
+              <div className="grid grid-cols-2 gap-2 overflow-y-auto flex-1">
+                {(['plaintiff','defendant'] as const).map(side => {
+                  const sideLaws = side === 'plaintiff'
+                    ? lawRefs.filter(l => l.party === 'plaintiff' || !l.party)
+                    : lawRefs.filter(l => l.party === 'defendant');
+                  return (
+                    <div key={side}>
+                      <div className={`text-[10px] font-black uppercase tracking-wider mb-1.5 ${side==='plaintiff'?'text-blue-500':'text-red-500'}`}>{side==='plaintiff'?'原告':'被告'}</div>
+                      <div className="space-y-1.5">
+                        {sideLaws.length===0 && <div className="text-[10px] text-slate-400 dark:text-slate-500">暂无</div>}
+                        {sideLaws.map(law => {
+                          const active = activeLawId===law.id;
+                          return (
+                            <div id={`law-card-${law.id}`} key={law.id} className={`rounded-lg border p-1.5 transition cursor-pointer ${active?'border-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 shadow-sm':'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-indigo-300'}`}>
+                              <div className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 truncate">{law.title||law.id}</div>
+                              <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{toPlainDisplayText(law.content)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 战术建议 */}
+            <div className="shrink-0 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/40 rounded-xl p-3">
+              <h4 className="text-xs font-bold text-blue-800 dark:text-blue-300 mb-1.5 flex items-center"><Zap className="w-3.5 h-3.5 mr-1 text-orange-500"/>战术建议</h4>
+              <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">{userRole==='defendant'?'建议核查原告证据关联性，从程序瑕疵角度提出质疑，准备替代性解释。':'建议强调证据链完整性，引用具体法条支撑主张。'}</p>
+            </div>
+          </ResizableSidebar>
         ) : (
           <div className="hidden xl:flex w-11 bg-white dark:bg-slate-900 border-l border-slate-200 items-start justify-center pt-4 shrink-0">
             <button onClick={onToggleRightSidebar} className="p-1.5 rounded-md text-slate-400 dark:text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition" title="展开右侧栏">
@@ -636,55 +826,129 @@ function LiveView(props: {
   );
 }
 
-function ReviewView({ reviewData, onReset, onBackToHome }: { reviewData: ReviewData | null; onReset: () => void; onBackToHome: () => void }) {
+function ReviewView({ reviewData, onRestart, onBackToHome }: { reviewData: ReviewData | null; onRestart: () => void; onBackToHome: () => void }) {
   const rd = reviewData;
   return (
-    <div className="flex-1 bg-slate-50 dark:bg-slate-800 overflow-y-auto p-8">
-      <div className="max-w-3xl mx-auto space-y-8">
-        <div className="text-center">
-          <PieChart className="w-14 h-14 text-blue-600 mx-auto mb-4"/>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-2">庭审复盘报告</h1>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">AI 综合双方陈述与证据，生成以下复盘分析</p>
+    <div className="flex-1 bg-slate-50 dark:bg-slate-900 overflow-y-auto p-6 lg:p-8">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="text-center mb-2">
+          <PieChart className="w-12 h-12 text-blue-600 mx-auto mb-3"/>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-1">庭审复盘报告</h1>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">AI 综合双方陈述、证据与法条，生成以下完整复盘分析</p>
         </div>
         {rd && (
           <>
-            <section className="bg-white dark:bg-slate-900 p-5 lg:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-              <h2 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center"><Award className="w-5 h-5 mr-2 text-blue-600"/>胜诉概率预测</h2>
+            {/* 胜诉概率 */}
+            <section className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+              <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center"><Award className="w-4 h-4 mr-2 text-blue-600"/>胜诉概率预测</h2>
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-blue-50 rounded-xl p-5 text-center border border-blue-100">
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-5 text-center border border-blue-100 dark:border-blue-800">
                   <div className="text-xs font-bold text-blue-500 uppercase tracking-widest mb-2">原告胜诉率</div>
                   <div className="text-4xl font-black text-blue-600">{rd.win_probability.plaintiff}%</div>
+                  <div className="mt-2 h-1.5 bg-blue-100 dark:bg-blue-800 rounded-full overflow-hidden"><div className="h-full bg-blue-500 rounded-full" style={{width:`${rd.win_probability.plaintiff}%`}}/></div>
                 </div>
-                <div className="bg-red-50 rounded-xl p-5 text-center border border-red-100">
+                <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-5 text-center border border-red-100 dark:border-red-800">
                   <div className="text-xs font-bold text-red-500 uppercase tracking-widest mb-2">被告胜诉率</div>
                   <div className="text-4xl font-black text-red-600">{rd.win_probability.defendant}%</div>
+                  <div className="mt-2 h-1.5 bg-red-100 dark:bg-red-800 rounded-full overflow-hidden"><div className="h-full bg-red-500 rounded-full" style={{width:`${rd.win_probability.defendant}%`}}/></div>
                 </div>
               </div>
             </section>
-            <section className="bg-white dark:bg-slate-900 p-5 lg:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-              <h2 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-3 flex items-center"><Gavel className="w-5 h-5 mr-2 text-blue-600"/>裁判综述</h2>
-              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{rd.summary}</p>
+            {/* AI 表现评分 */}
+            {rd.scores && (
+              <section className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center"><Target className="w-4 h-4 mr-2 text-blue-600"/>AI 庭审表现评分</h2>
+                <div className="grid grid-cols-3 gap-4">
+                  {([{label:'法条适配度',val:rd.scores.statute,color:'text-indigo-600',bg:'bg-indigo-500'},{label:'逻辑严密性',val:rd.scores.logic,color:'text-blue-600',bg:'bg-blue-500'},{label:'陪审团综合',val:rd.scores.jury,color:'text-green-600',bg:'bg-green-500'}]).map(({label,val,color,bg}) => (
+                    <div key={label} className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 border border-slate-100 dark:border-slate-700 text-center">
+                      <div className={`text-2xl font-black ${color}`}>{val}</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 mb-2">{label}</div>
+                      <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden"><div className={`h-full ${bg} rounded-full`} style={{width:`${val}%`}}/></div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+            {/* 裁判综述 */}
+            <section className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+              <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3 flex items-center"><Gavel className="w-4 h-4 mr-2 text-blue-600"/>裁判综述</h2>
+              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-line">{rd.summary}</p>
             </section>
-            <section className="bg-white dark:bg-slate-900 p-5 lg:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-              <h2 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-3 flex items-center"><Star className="w-5 h-5 mr-2 text-blue-600"/>关键要点</h2>
-              <ul className="space-y-2">
-                {rd.keyPoints.map((point, i) => (
-                  <li key={i} className="flex items-start text-sm text-slate-600 dark:text-slate-300">
-                    <span className="text-blue-600 font-bold mr-3">{i + 1}.</span>
-                    <span>{point}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-            <div className="text-center pt-4">
-              <div className="flex items-center justify-center gap-3">
-                <button onClick={onBackToHome} className="px-6 py-3 rounded-xl font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition shadow-sm flex items-center">
-                  <ArrowLeft className="w-4 h-4 mr-2"/> 返回模拟法庭主页
-                </button>
-                <button onClick={onReset} className="px-8 py-3 rounded-xl font-medium bg-blue-600 text-white hover:bg-blue-700 transition shadow-md flex items-center">
-                  <Gavel className="w-4 h-4 mr-2"/> 重新开始
-                </button>
-              </div>
+            {/* 关键要点 */}
+            {rd.keyPoints.length > 0 && (
+              <section className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3 flex items-center"><Star className="w-4 h-4 mr-2 text-blue-600"/>关键争议要点</h2>
+                <ul className="space-y-2">
+                  {rd.keyPoints.map((point, i) => (
+                    <li key={i} className="flex items-start text-sm text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-2">
+                      <span className="text-blue-600 font-bold mr-2 shrink-0">{i + 1}.</span>
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {/* 证据与法条汇总 */}
+            {((rd.evidenceRefs && rd.evidenceRefs.length > 0) || (rd.lawRefs && rd.lawRefs.length > 0)) && (
+              <section className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center"><FileSearch className="w-4 h-4 mr-2 text-blue-600"/>庭审证据与法条汇总</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {rd.evidenceRefs && rd.evidenceRefs.length > 0 && (
+                    <div>
+                      <h3 className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-2">证据清单（{rd.evidenceRefs.length} 项）</h3>
+                      <div className="space-y-1.5">
+                        {rd.evidenceRefs.map((ev, i) => (
+                          <div key={ev.id || i} className="rounded-lg bg-emerald-50 dark:bg-emerald-900/15 border border-emerald-100 dark:border-emerald-800/40 px-3 py-2">
+                            <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">{ev.title || ev.id}</div>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{toPlainDisplayText(ev.content)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {rd.lawRefs && rd.lawRefs.length > 0 && (
+                    <div>
+                      <h3 className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-2">引用法条（{rd.lawRefs.length} 条）</h3>
+                      <div className="space-y-1.5">
+                        {rd.lawRefs.map((law, i) => (
+                          <div key={law.id || i} className="rounded-lg bg-indigo-50 dark:bg-indigo-900/15 border border-indigo-100 dark:border-indigo-800/40 px-3 py-2">
+                            <div className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">{law.title || law.id}</div>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{toPlainDisplayText(law.content)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+            {/* 庭审记录摘要 */}
+            {rd.transcript && rd.transcript.length > 0 && (
+              <section className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center"><MessageSquare className="w-4 h-4 mr-2 text-blue-600"/>庭审发言记录（{rd.transcript.length} 条）</h2>
+                <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                  {rd.transcript.map((msg, i) => (
+                    <div key={i} className={`rounded-xl px-4 py-3 text-sm border ${
+                      msg.role==='judge' ? 'bg-amber-50 dark:bg-amber-900/15 border-amber-100 dark:border-amber-800/40 text-amber-900 dark:text-amber-200'
+                      : msg.role==='plaintiff' ? 'bg-blue-50 dark:bg-blue-900/15 border-blue-100 dark:border-blue-800/40 text-blue-900 dark:text-blue-200'
+                      : msg.role==='defendant' ? 'bg-red-50 dark:bg-red-900/15 border-red-100 dark:border-red-800/40 text-red-900 dark:text-red-200'
+                      : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                    }`}>
+                      <div className="text-[10px] font-bold uppercase tracking-wider mb-1 opacity-60">{msg.name}</div>
+                      <div className="text-[12px] leading-relaxed line-clamp-4">{toPlainDisplayText(msg.content)}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+            {/* 操作按钮 */}
+            <div className="flex items-center justify-center gap-3 pt-2 pb-4">
+              <button onClick={onBackToHome} className="px-6 py-3 rounded-xl font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition shadow-sm flex items-center">
+                <ArrowLeft className="w-4 h-4 mr-2"/>返回法庭
+              </button>
+              <button onClick={onRestart} className="px-8 py-3 rounded-xl font-medium bg-blue-600 text-white hover:bg-blue-700 transition shadow-md flex items-center">
+                <Gavel className="w-4 h-4 mr-2"/>重新审判（同一案情）
+              </button>
             </div>
           </>
         )}
@@ -708,6 +972,7 @@ export default function CourtPage() {
   const [chatHistory, setChatHistory] = useState<ChatMsg[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [scores, setScores] = useState({ statute: 0, logic: 0, jury: 0 });
+  const scoreAccRef = useRef({ messages: 0, lawRefs: 0, evidenceRefs: 0, phases: new Set<string>() });
   const [inputText, setInputText] = useState('');
   const [reviewData, setReviewData] = useState<ReviewData | null>(null);
   const [templatePage, setTemplatePage] = useState(0);
@@ -751,10 +1016,22 @@ export default function CourtPage() {
     setChatHistory([{ role: 'system', name: '系统', content: '庭审即将开始...' }]);
     setIsStreaming(true);
     setScores({ statute: 0, logic: 0, jury: 0 });
+    scoreAccRef.current = { messages: 0, lawRefs: 0, evidenceRefs: 0, phases: new Set<string>() };
     setEvidenceRefs([]);
     setLawRefs([]);
     setActiveEvidenceId(null);
     setActiveLawId(null);
+
+    // 本地实时评分引擎
+    const computeScores = (acc: typeof scoreAccRef.current) => {
+      // 法条适配度：引用法条数 * 15，上限 95
+      const statute = Math.min(95, acc.lawRefs * 15 + (acc.phases.size >= 3 ? 10 : 0));
+      // 逻辑严密性：消息数 * 8 + 证据引用 * 10，上限 95
+      const logic = Math.min(95, acc.messages * 8 + acc.evidenceRefs * 10);
+      // 陪审团预测：综合均值略微加权
+      const jury = Math.min(99, Math.round((statute * 0.45 + logic * 0.55)));
+      return { statute, logic, jury };
+    };
 
     try {
       const strategy = userRole === 'plaintiff' ? `原告代理人（${aiPersonas.plaintiff}）` : userRole === 'defendant' ? `被告代理人（${aiPersonas.defendant}）` : '旁听席';
@@ -785,6 +1062,13 @@ export default function CourtPage() {
           if (event.type === 'new_message') {
             const mappedRole = mapRole(event);
             const msgId = 'msg_id' in event ? event.msg_id : undefined;
+            // 每条新消息更新消息计数和阶段
+            if (mappedRole !== 'system') {
+              scoreAccRef.current.messages += 1;
+              const phase = 'phase' in event ? event.phase : undefined;
+              if (phase) scoreAccRef.current.phases.add(phase);
+              setScores(computeScores(scoreAccRef.current));
+            }
             setChatHistory(prev => [
               ...prev,
               {
@@ -827,13 +1111,29 @@ export default function CourtPage() {
               return next;
             });
           } else if (event.type === 'evidence_list') {
-            if (Array.isArray(event.evidence_list)) setEvidenceRefs(event.evidence_list);
+            if (Array.isArray(event.evidence_list)) {
+              setEvidenceRefs(event.evidence_list);
+              scoreAccRef.current.evidenceRefs = event.evidence_list.length;
+              setScores(computeScores(scoreAccRef.current));
+            }
           } else if (event.type === 'law_list') {
-            if (Array.isArray(event.law_list)) setLawRefs(event.law_list);
+            if (Array.isArray(event.law_list)) {
+              setLawRefs(event.law_list);
+              scoreAccRef.current.lawRefs = event.law_list.length;
+              setScores(computeScores(scoreAccRef.current));
+            }
           } else if (event.type === 'evidence_reference') {
-            if (event.evidence_id) setActiveEvidenceId(event.evidence_id);
+            if (event.evidence_id) {
+              setActiveEvidenceId(event.evidence_id);
+              scoreAccRef.current.evidenceRefs += 1;
+              setScores(computeScores(scoreAccRef.current));
+            }
           } else if (event.type === 'law_reference') {
-            if (event.law_id) setActiveLawId(event.law_id);
+            if (event.law_id) {
+              setActiveLawId(event.law_id);
+              scoreAccRef.current.lawRefs += 1;
+              setScores(computeScores(scoreAccRef.current));
+            }
           } else if (event.type === 'result') {
             if (event.result?.evidence_list) setEvidenceRefs(event.result.evidence_list);
             if (event.result?.law_list) setLawRefs(event.result.law_list);
@@ -846,14 +1146,22 @@ export default function CourtPage() {
               }]);
             }
             if (event.result?.plaintiff_win_rate !== undefined && event.result?.defendant_win_rate !== undefined) {
-              setReviewData({
+              setReviewData(prev => ({
                 win_probability: {
-                  plaintiff: event.result.plaintiff_win_rate,
-                  defendant: event.result.defendant_win_rate
+                  plaintiff: event.result!.plaintiff_win_rate!,
+                  defendant: event.result!.defendant_win_rate!
                 },
-                summary: toPlainDisplayText(event.result.verdict || '庭审推演已完成'),
-                keyPoints: []
-              });
+                summary: toPlainDisplayText(event.result?.verdict || '庭审推演已完成'),
+                keyPoints: [],
+                transcript: prev?.transcript,
+                evidenceRefs: event.result?.evidence_list,
+                lawRefs: event.result?.law_list,
+                scores: scoreAccRef.current ? {
+                  statute: Math.min(95, scoreAccRef.current.lawRefs * 15 + (scoreAccRef.current.phases.size >= 3 ? 10 : 0)),
+                  logic: Math.min(95, scoreAccRef.current.messages * 8 + scoreAccRef.current.evidenceRefs * 10),
+                  jury: 0,
+                } : undefined,
+              }));
             }
           }
         }
@@ -884,10 +1192,23 @@ export default function CourtPage() {
   }, []);
 
   const handleEndReview = useCallback(() => {
+    // 生成复盘时把完整 transcript 存入 reviewData
+    setChatHistory(prev => {
+      setReviewData(rd => rd ? { ...rd, transcript: prev } : {
+        win_probability: { plaintiff: 50, defendant: 50 },
+        summary: '庭审已结束，等待 AI 综合评估...',
+        keyPoints: [],
+        transcript: prev,
+        evidenceRefs: [],
+        lawRefs: [],
+      });
+      return prev;
+    });
     setView('review');
   }, []);
 
   const handleReset = useCallback(() => {
+    // 返回法庭主界面，清空所有状态
     setView('setup');
     setCaseDesc('');
     setEvidence({ plaintiff: [], defendant: [] });
@@ -899,6 +1220,21 @@ export default function CourtPage() {
     setActiveEvidenceId(null);
     setActiveLawId(null);
   }, []);
+
+  // 重新审判：保留案情/身份/证据/风格，重新开庭
+  const handleRestart = useCallback(() => {
+    setChatHistory([]);
+    setReviewData(null);
+    setScores({ statute: 0, logic: 0, jury: 0 });
+    setEvidenceRefs([]);
+    setLawRefs([]);
+    setActiveEvidenceId(null);
+    setActiveLawId(null);
+    // handleStart 依赖 view==='live' 之外的状态，直接调用即可
+    setView('live');
+    // 用 setTimeout 让 React 先完成 state 更新再触发庭审
+    setTimeout(() => { handleStart(); }, 0);
+  }, [handleStart]);
 
   const handleJumpToMessage = useCallback((msgId: string) => {
     const el = document.getElementById(`court-msg-${msgId}`);
@@ -999,8 +1335,8 @@ export default function CourtPage() {
       {view === 'review' && (
         <ReviewView
           reviewData={reviewData}
-          onReset={handleReset}
-          onBackToHome={() => setView('setup')}
+          onRestart={handleRestart}
+          onBackToHome={handleReset}
         />
       )}
       {showCaseLibrary && (

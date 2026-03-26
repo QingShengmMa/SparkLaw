@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { MessageSquare, MoreHorizontal, Pencil, Pin, Plus, Scale, Trash2, Wrench, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { MessageSquare, MoreHorizontal, Pencil, Pin, Plus, Scale, Trash2, Wrench, PanelLeftClose, PanelLeftOpen, Settings } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import ScaleIcon from './ScaleIcon';
 import { useChatStore } from '@/store/chatStore';
@@ -159,6 +159,13 @@ export default function ChatSidebar() {
 
         {collapsed ? (
           <div className="mt-auto border-t border-gray-100 p-3 dark:border-slate-800">
+            <Link
+              href="/settings"
+              className={`mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-lg transition-colors duration-300 ease-in-out ${isActiveRoute('/settings') ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-gray-100'}`}
+              title="设置"
+            >
+              <Settings size={18} className="shrink-0" />
+            </Link>
             <ThemeToggle compact />
           </div>
         ) : (
@@ -222,6 +229,13 @@ export default function ChatSidebar() {
             </div>
 
             <div className="border-t border-gray-100 p-3 dark:border-slate-800">
+              <Link
+                href="/settings"
+                className={`mb-2 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-300 ease-in-out ${isActiveRoute('/settings') ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-gray-100'}`}
+              >
+                <Settings size={18} className="shrink-0" />
+                <span>设置</span>
+              </Link>
               <ThemeToggle />
             </div>
           </>
