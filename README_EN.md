@@ -6,11 +6,12 @@
 
 <p>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-0ea5e9.svg" alt="MIT License" /></a>
-  <a href="https://github.com/QingShengmMa/SparkLaw/pulls"><img src="https://img.shields.io/badge/PRs-Welcome-22c55e.svg" alt="PRs Welcome" /></a>
-  <a href="https://github.com/QingShengmMa/SparkLaw/stargazers"><img src="https://img.shields.io/github/stars/QingShengmMa/SparkLaw?style=social" alt="GitHub Stars" /></a>
   <a href="https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white"><img src="https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white" alt="FastAPI" /></a>
   <a href="https://img.shields.io/badge/Next.js-Frontend-000000?logo=nextdotjs"><img src="https://img.shields.io/badge/Next.js-Frontend-000000?logo=nextdotjs" alt="Next.js" /></a>
   <a href="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python" /></a>
+  <a href="https://github.com/QingShengmMa/SparkLaw/pulls"><img src="https://img.shields.io/badge/PRs-Welcome-22c55e.svg" alt="PRs Welcome" /></a>
+  <a href="https://github.com/QingShengmMa/SparkLaw/stargazers"><img src="https://img.shields.io/github/stars/QingShengmMa/SparkLaw?style=social" alt="GitHub Stars" /></a>
+  <img src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker Ready" />
 </p>
 
 English · [中文](./README.md)
@@ -31,8 +32,38 @@ English · [中文](./README.md)
 - **Contract Review**: structured risk detection with revision suggestions
 - **Mock Court**: multi-role adversarial reasoning with streaming trial flow
 
-The goal is to provide a **runnable, extensible, and developer-friendly** legal AI engineering foundation—not just a demo page.
-Developer-friendly by design: modular backend + standalone frontend, with flexible local/cloud model configuration for secondary development.
+The goal is to provide a **runnable, extensible, and developer-friendly** legal AI engineering foundation—modular backend + standalone frontend, with flexible local/cloud model configuration.
+
+---
+
+## 🖼️ Feature Preview
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/legal-chat.png" alt="Legal Chat" width="100%" />
+      <b>Legal Chat</b><br />
+      Continuous legal consultation with streaming responses across multi-turn conversations.
+    </td>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/contract-review.png" alt="Contract Review" width="100%" />
+      <b>Contract Review</b><br />
+      Detects contractual risks in a structured way and provides actionable revision suggestions.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/legal-calculator.png" alt="Legal Calculator" width="100%" />
+      <b>Legal Calculator</b><br />
+      Covers common legal fee and compensation scenarios with quick and traceable outputs.
+    </td>
+    <td width="50%" valign="top">
+      <img src="showcase/screenshots/document-drafting.png" alt="Document Drafting" width="100%" />
+      <b>Document Drafting</b><br />
+      Generates standardized legal draft documents from case facts and supports iterative refinement.
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -72,7 +103,6 @@ flowchart LR
     API --> F
 ```
 
-
 ```text
 SparkLaw/
 ├─ app/
@@ -98,7 +128,7 @@ SparkLaw/
 └─ docker-compose.yml                  # Local container orchestration
 ```
 
-### Core request flow (simplified)
+### Core Request Flow (Simplified)
 
 1. Frontend pages send REST/SSE requests
 2. `api/v1/routes` handles input schema and protocol adaptation
@@ -108,66 +138,100 @@ SparkLaw/
 
 ---
 
-## 🖼️ Feature Preview
+## 🚀 Quick Start
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="showcase/screenshots/legal-chat.png" alt="Legal Chat" width="100%" />
-      <b>Legal Chat</b><br />
-      Delivers continuous legal consultation with streaming responses across multi-turn conversations.
-    </td>
-    <td width="50%" valign="top">
-      <img src="showcase/screenshots/contract-review.png" alt="Contract Review" width="100%" />
-      <b>Contract Review</b><br />
-      Detects contractual risks in a structured way and provides actionable revision suggestions.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="showcase/screenshots/legal-calculator.png" alt="Legal Calculator" width="100%" />
-      <b>Legal Calculator</b><br />
-      Covers common legal fee and compensation scenarios with quick and traceable outputs.
-    </td>
-    <td width="50%" valign="top">
-      <img src="showcase/screenshots/document-drafting.png" alt="Document Drafting" width="100%" />
-      <b>Document Drafting</b><br />
-      Generates standardized legal draft documents from case facts and supports iterative refinement.
-    </td>
-  </tr>
-</table>
+Two deployment options are available. **Docker is recommended** — no manual environment setup required.
 
 ---
 
-## 🚀 Quick Start
+### Option 1: Docker (Recommended)
 
-### Prerequisites
+**Prerequisites:** Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (includes Docker Compose).
 
-- Python 3.10+
-- Node.js 18+
-- (Optional) Redis 6+
-- (Optional) Ollama (for local model mode)
-
-### 1) Clone repository
+#### 1. Clone the repository
 
 ```bash
 git clone https://github.com/QingShengmMa/SparkLaw.git
 cd SparkLaw
 ```
 
-### 2) Configure environment variables
+#### 2. Configure environment variables
 
 ```bash
-# backend
+cp .env.example .env
+# Open .env and fill in at minimum:
+# OPENAI_API_KEY=sk-your_key_here
+# OPENAI_BASE_URL=https://api.openai.com/v1   # supports DeepSeek / Qwen / etc.
+# OPENAI_MODEL=gpt-4o-mini
+```
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LLM_MODE` | `cloud` (OpenAI-compatible) or `local` (Ollama) | `cloud` |
+| `OPENAI_API_KEY` | Your API key | — |
+| `OPENAI_BASE_URL` | API endpoint | `https://api.openai.com/v1` |
+| `OPENAI_MODEL` | Model name | `gpt-4o-mini` |
+| `OLLAMA_BASE_URL` | Local Ollama address (local mode) | `http://host.docker.internal:11434` |
+
+#### 3. Start all services
+
+```bash
+docker compose up -d --build
+```
+
+First build takes 3–8 minutes depending on network speed. Subsequent restarts are near-instant.
+
+#### 4. Access the app
+
+| Service | URL |
+|---------|-----|
+| 🌐 Frontend | http://localhost:3000 |
+| ⚙️ Backend API | http://localhost:8000 |
+| 📖 API Docs | http://localhost:8000/docs |
+
+#### Common commands
+
+```bash
+# Stream logs from all services
+docker compose logs -f
+
+# Stream logs from a specific service
+docker compose logs -f backend
+docker compose logs -f frontend
+
+# Stop all services
+docker compose down
+
+# Stop and remove all volumes (full reset)
+docker compose down -v
+```
+
+---
+
+### Option 2: Manual Local Setup
+
+**Prerequisites:** Python 3.10+, Node.js 18+, (optional) Redis 6+, (optional) Ollama
+
+#### 1. Clone the repository
+
+```bash
+git clone https://github.com/QingShengmMa/SparkLaw.git
+cd SparkLaw
+```
+
+#### 2. Configure environment variables
+
+```bash
+# Backend
 cp .env.example .env
 
-# frontend
+# Frontend
 cd frontend
 cp .env.local.example .env.local
 cd ..
 ```
 
-### 3) Start backend
+#### 3. Start the backend
 
 ```bash
 python -m venv venv
@@ -180,7 +244,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 4) Start frontend
+#### 4. Start the frontend
 
 ```bash
 cd frontend
@@ -189,23 +253,6 @@ npm run dev
 ```
 
 Open: `http://localhost:3000`
-
----
-
-## ⚙️ Key Environment Variables
-
-| Variable | Description | Example |
-|---|---|---|
-| `LLM_MODE` | Model mode: `local` / `cloud` | `cloud` |
-| `OPENAI_API_KEY` | Cloud model API key | `sk-***` |
-| `OPENAI_BASE_URL` | OpenAI-compatible endpoint | `https://api.openai.com/v1` |
-| `OPENAI_MODEL` | Cloud model name | `gpt-4o-mini` |
-| `OLLAMA_BASE_URL` | Local Ollama endpoint | `http://localhost:11434` |
-| `OLLAMA_MODEL` | Local model name | `qwen2.5:7b` |
-| `REDIS_URL` | Redis primary URL | `redis://localhost:6379/0` |
-| `NEXT_PUBLIC_API_URL` | Frontend API base URL | `http://localhost:8000` |
-
-For full configs, see `.env.example` and `frontend/.env.local.example`.
 
 ---
 
@@ -226,7 +273,7 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for details.
 
 ## ⚠️ Disclaimer
 
-SparkLaw is designed for legal information processing and assistance. It does not constitute legal advice and should not replace professional legal services. Please consult a licensed attorney before making critical legal decisions.
+SparkLaw is designed for legal information processing and AI-assisted analysis. It does not constitute legal advice and should not replace professional legal services. Please consult a licensed attorney before making critical legal decisions.
 
 ---
 
