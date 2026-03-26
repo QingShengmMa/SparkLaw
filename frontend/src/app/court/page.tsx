@@ -541,7 +541,6 @@ function LiveView(props: {
   chatEndRef: React.RefObject<HTMLDivElement>; isStreaming: boolean;
   scores: { statute: number; logic: number; jury: number };
   inputText: string; setInputText: (v: string) => void;
-  evidence: { plaintiff: EvidenceItem[]; defendant: EvidenceItem[] };
   onSpeak: () => void; onBack: () => void; onEndReview: () => void;
   leftSidebarOpen: boolean; rightSidebarOpen: boolean;
   onToggleLeftSidebar: () => void; onToggleRightSidebar: () => void;
@@ -555,7 +554,7 @@ function LiveView(props: {
   onReferenceClick: (type: '证据' | '法条', value: string) => void;
   resolveRefDetail: (type: '证据' | '法条', value: string) => string | undefined;
 }) {
-  const { caseDesc, userRole, chatHistory, chatEndRef, isStreaming, scores, inputText, setInputText, evidence, onSpeak, onBack, onEndReview, leftSidebarOpen, rightSidebarOpen, onToggleLeftSidebar, onToggleRightSidebar, onJumpToMessage, evidenceRefs, lawRefs, activeEvidenceId, activeLawId, onReferenceHover, onReferenceLeave, onReferenceClick, resolveRefDetail } = props;
+  const { caseDesc, userRole, chatHistory, chatEndRef, isStreaming, scores, inputText, setInputText, onSpeak, onBack, onEndReview, leftSidebarOpen, rightSidebarOpen, onToggleLeftSidebar, onToggleRightSidebar, onJumpToMessage, evidenceRefs, lawRefs, activeEvidenceId, activeLawId, onReferenceHover, onReferenceLeave, onReferenceClick, resolveRefDetail } = props;
 
   const stageMessageMap = new Map<TrialStage, ChatMsg>();
   let currentStage: TrialStage = '开庭准备';
@@ -568,38 +567,47 @@ function LiveView(props: {
   });
   const currentStageIndex = TRIAL_STAGES.indexOf(currentStage);
 
-  const normalizeParty = (raw?: string, title?: string, content?: string): 'plaintiff' | 'defendant' | 'both' => {
-    const src = `${raw || ''} ${(title || '')} ${(content || '')}`.toLowerCase();
-    const hasPlaintiff = /plaintiff|原告|申请人|上诉人/.test(src);
-    const hasDefendant = /defendant|被告|被申请人|被上诉人/.test(src);
-    if (hasPlaintiff && hasDefendant) return 'both';
-    if (hasPlaintiff) return 'plaintiff';
-    if (hasDefendant) return 'defendant';
-    if (raw === 'both' || raw === '双方') return 'both';
-    return 'both';
+  const classifyByParty = <T extends { id?: string; title?: string; content?: string; party?: 'plaintiff' | 'defendant' | 'both' }>(
+    refs: T[],
+    type: '证据' | '法条',
+  ) => {
+    const p: T[] = [];
+    const d: T[] = [];
+
+    refs.forEach((item) => {
+      if (item.party === 'plaintiff') {
+        p.push(item);
+        return;
+      }
+      if (item.party === 'defendant') {
+        d.push(item);
+        return;
+      }
+      if (item.party === 'both') {
+        p.push(item);
+        d.push(item);
+        return;
+      }
+
+      const idOrTitle = `${item.id || ''} ${item.title || ''}`.toLowerCase();
+      const detail = (resolveRefDetail(type, item.id || item.title || '') || '').toLowerCase();
+      const text = `${idOrTitle} ${item.content || ''} ${detail}`;
+      const hasPlaintiff = /原告|plaintiff/.test(text);
+      const hasDefendant = /被告|defendant/.test(text);
+
+      if (hasPlaintiff && !hasDefendant) p.push(item);
+      else if (hasDefendant && !hasPlaintiff) d.push(item);
+      else {
+        p.push(item);
+        d.push(item);
+      }
+    });
+
+    return { plaintiff: p, defendant: d };
   };
 
-  const groupedEvidence = {
-    plaintiff: evidenceRefs.filter(e => {
-      const p = normalizeParty(e.party, e.title, e.content);
-      return p === 'plaintiff' || p === 'both';
-    }),
-    defendant: evidenceRefs.filter(e => {
-      const p = normalizeParty(e.party, e.title, e.content);
-      return p === 'defendant' || p === 'both';
-    }),
-  };
-
-  const groupedLaws = {
-    plaintiff: lawRefs.filter(l => {
-      const p = normalizeParty(l.party, l.title, l.content);
-      return p === 'plaintiff' || p === 'both';
-    }),
-    defendant: lawRefs.filter(l => {
-      const p = normalizeParty(l.party, l.title, l.content);
-      return p === 'defendant' || p === 'both';
-    }),
-  };
+  const evidenceByParty = classifyByParty(evidenceRefs, '证据');
+  const lawByParty = classifyByParty(lawRefs, '法条');
 
   return (
     <div className="flex-1 flex flex-col bg-slate-50 dark:bg-slate-800 overflow-hidden">
@@ -622,35 +630,49 @@ function LiveView(props: {
       <div className="flex-1 flex overflow-hidden">
         {leftSidebarOpen ? (
           <ResizableLeftSidebar onClose={onToggleLeftSidebar}>
-            {/* 证据审查面板 */}
+            {/* AI 表现评估 */}
             <div className="shrink-0">
-              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center mb-3"><FileSearch className="w-4 h-4 mr-1.5 text-blue-500"/>证据审查面板</h3>
-              <div className="grid grid-cols-2 gap-2">
-                {(['plaintiff','defendant'] as const).map(side => {
-                  const evList = evidence[side].filter(e => e.category || e.content);
-                  return (
-                    <div key={side}>
-                      <div className={`text-[10px] font-black uppercase tracking-wider mb-1.5 ${side==='plaintiff'?'text-blue-500':'text-red-500'}`}>
-                        {side==='plaintiff'?'原告证据':'被告证据'}
-                      </div>
-                      <div className="space-y-1.5">
-                        {evList.length===0 && <div className="text-[10px] text-slate-400 dark:text-slate-500">暂无</div>}
-                        {evList.map((ev,i) => (
-                          <div key={ev.id} className="bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-100 dark:border-slate-700">
-                            <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 truncate mb-1">
-                              {side==='plaintiff'?'原告':'被告'}证{i+1}：{ev.category||'未命名'}
-                            </div>
-                            {ev.content && <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-1.5 line-clamp-2">{ev.content}</p>}
-                            <div className="flex flex-wrap gap-1">
-                              <span className="px-1.5 py-0.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded text-[9px] border border-green-200 dark:border-green-700/40">真实性✓</span>
-                              <span className="px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 rounded text-[9px] border border-amber-200 dark:border-amber-700/40">关联性存疑</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center mb-2"><Target className="w-4 h-4 mr-1.5 text-blue-500"/>AI表现评估</h3>
+              <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 space-y-3">
+                {([{ label: '法条适配度', val: scores.statute, color: 'bg-indigo-500', icon: '⚖️' }, { label: '逻辑严密性', val: scores.logic, color: 'bg-blue-500', icon: '🧠' }]).map(({ label, val, color, icon }) => (
+                  <div key={label}>
+                    <div className="flex justify-between text-xs mb-1 items-center">
+                      <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1"><span>{icon}</span>{label}</span>
+                      <span className={`font-bold tabular-nums ${val > 0 ? 'text-blue-600' : 'text-slate-400 dark:text-slate-500'}`}>{val > 0 ? `${val}%` : '待评估'}</span>
                     </div>
-                  );
-                })}
+                    <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                      <div className={`h-full ${color} rounded-full transition-all duration-700 ease-out`} style={{ width: `${val}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 陪审团预测 */}
+            <div className="shrink-0">
+              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center mb-2"><Users className="w-4 h-4 mr-1.5 text-blue-500"/>陪审团预测</h3>
+              <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 flex items-center gap-3">
+                <div className="relative w-14 h-14 shrink-0">
+                  <svg className="w-full h-full -rotate-90" viewBox="0 0 56 56">
+                    <circle cx="28" cy="28" r="22" stroke="currentColor" strokeOpacity="0.1" strokeWidth="5" fill="transparent" className="text-slate-400"/>
+                    <circle cx="28" cy="28" r="22"
+                      stroke={scores.jury >= 80 ? '#22c55e' : scores.jury >= 60 ? '#3b82f6' : scores.jury > 0 ? '#f59e0b' : '#cbd5e1'}
+                      strokeWidth="5" fill="transparent" strokeLinecap="round"
+                      strokeDasharray={`${2 * Math.PI * 22}`}
+                      strokeDashoffset={`${2 * Math.PI * 22 * (1 - scores.jury / 100)}`}
+                      style={{ transition: 'stroke-dashoffset 0.8s ease' }}
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className={`text-sm font-black ${scores.jury > 0 ? 'text-slate-800 dark:text-slate-100' : 'text-slate-300 dark:text-slate-600'}`}>{scores.jury > 0 ? scores.jury : '--'}</span>
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className={`text-sm font-bold truncate ${scores.jury >= 80 ? 'text-green-600' : scores.jury >= 60 ? 'text-blue-600' : scores.jury > 0 ? 'text-amber-600' : 'text-slate-400 dark:text-slate-500'}`}>
+                    {scores.jury >= 80 ? '说服力极强' : scores.jury >= 60 ? '论证有力' : scores.jury >= 40 ? '初步成型' : scores.jury > 0 ? '论证薄弱' : '等待首轮发言...'}
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{scores.jury > 0 ? '综合法条与逻辑预测' : '庭审开始后实时更新'}</div>
+                </div>
               </div>
             </div>
 
@@ -681,6 +703,12 @@ function LiveView(props: {
                   );
                 })}
               </div>
+            </div>
+
+            {/* 战术建议 */}
+            <div className="shrink-0 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/40 rounded-xl p-3">
+              <h4 className="text-xs font-bold text-blue-800 dark:text-blue-300 mb-1.5 flex items-center"><Zap className="w-3.5 h-3.5 mr-1 text-orange-500"/>战术建议</h4>
+              <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">建议强调证据链完整性，引用具体法条支撑主张。</p>
             </div>
           </ResizableLeftSidebar>
         ) : (
@@ -738,102 +766,54 @@ function LiveView(props: {
         </main>
         {rightSidebarOpen ? (
           <ResizableSidebar onClose={onToggleRightSidebar}>
-            {/* AI 表现评估 */}
-            <div className="shrink-0">
-              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center mb-2"><Target className="w-4 h-4 mr-1.5 text-blue-500"/>AI表现评估</h3>
-              <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 space-y-3">
-                {([{ label: '法条适配度', val: scores.statute, color: 'bg-indigo-500', icon: '⚖️' }, { label: '逻辑严密性', val: scores.logic, color: 'bg-blue-500', icon: '🧠' }]).map(({ label, val, color, icon }) => (
-                  <div key={label}>
-                    <div className="flex justify-between text-xs mb-1 items-center">
-                      <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1"><span>{icon}</span>{label}</span>
-                      <span className={`font-bold tabular-nums ${val > 0 ? 'text-blue-600' : 'text-slate-400 dark:text-slate-500'}`}>{val > 0 ? `${val}%` : '待评估'}</span>
-                    </div>
-                    <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                      <div className={`h-full ${color} rounded-full transition-all duration-700 ease-out`} style={{ width: `${val}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {/* 陪审团预测 */}
-            <div className="shrink-0">
-              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center mb-2"><Users className="w-4 h-4 mr-1.5 text-blue-500"/>陪审团预测</h3>
-              <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 flex items-center gap-3">
-                <div className="relative w-14 h-14 shrink-0">
-                  <svg className="w-full h-full -rotate-90" viewBox="0 0 56 56">
-                    <circle cx="28" cy="28" r="22" stroke="currentColor" strokeOpacity="0.1" strokeWidth="5" fill="transparent" className="text-slate-400"/>
-                    <circle cx="28" cy="28" r="22"
-                      stroke={scores.jury >= 80 ? '#22c55e' : scores.jury >= 60 ? '#3b82f6' : scores.jury > 0 ? '#f59e0b' : '#cbd5e1'}
-                      strokeWidth="5" fill="transparent" strokeLinecap="round"
-                      strokeDasharray={`${2 * Math.PI * 22}`}
-                      strokeDashoffset={`${2 * Math.PI * 22 * (1 - scores.jury / 100)}`}
-                      style={{ transition: 'stroke-dashoffset 0.8s ease' }}
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className={`text-sm font-black ${scores.jury > 0 ? 'text-slate-800 dark:text-slate-100' : 'text-slate-300 dark:text-slate-600'}`}>{scores.jury > 0 ? scores.jury : '--'}</span>
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className={`text-sm font-bold truncate ${scores.jury >= 80 ? 'text-green-600' : scores.jury >= 60 ? 'text-blue-600' : scores.jury > 0 ? 'text-amber-600' : 'text-slate-400 dark:text-slate-500'}`}>
-                    {scores.jury >= 80 ? '说服力极强' : scores.jury >= 60 ? '论证有力' : scores.jury >= 40 ? '初步成型' : scores.jury > 0 ? '论证薄弱' : '等待首轮发言...'}
-                  </div>
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{scores.jury > 0 ? '综合法条与逻辑预测' : '庭审开始后实时更新'}</div>
-                </div>
-              </div>
-            </div>
 
-            {/* 证据 — 双列 */}
+            {/* 双方材料对照（右侧纵向两栏：原告 / 被告） */}
             <div className="flex-1 min-h-0 flex flex-col">
-              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center mb-2 shrink-0"><FileSearch className="w-4 h-4 mr-1.5 text-emerald-500"/>证据清单</h3>
+              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center mb-2 shrink-0"><FileSearch className="w-4 h-4 mr-1.5 text-blue-500"/>双方证据与法条</h3>
               <div className="grid grid-cols-2 gap-2 overflow-y-auto flex-1">
-                {(['plaintiff','defendant'] as const).map(side => {
-                  const sideEvidence = side === 'plaintiff'
-                    ? evidenceRefs.filter(e => e.party === 'plaintiff' || !e.party)
-                    : evidenceRefs.filter(e => e.party === 'defendant');
+                {([
+                  { key: 'plaintiff', label: '原告', tone: 'blue' },
+                  { key: 'defendant', label: '被告', tone: 'red' },
+                ] as const).map((side) => {
+                  const sideEvidence = side.key === 'plaintiff' ? evidenceByParty.plaintiff : evidenceByParty.defendant;
+                  const sideLaws = side.key === 'plaintiff' ? lawByParty.plaintiff : lawByParty.defendant;
+
                   return (
-                    <div key={side}>
-                      <div className={`text-[10px] font-black uppercase tracking-wider mb-1.5 ${side==='plaintiff'?'text-blue-500':'text-red-500'}`}>{side==='plaintiff'?'原告':'被告'}</div>
-                      <div className="space-y-1.5">
-                        {sideEvidence.length===0 && <div className="text-[10px] text-slate-400 dark:text-slate-500">暂无</div>}
-                        {sideEvidence.map(ev => {
-                          const active = activeEvidenceId===ev.id;
-                          return (
-                            <div id={`evidence-card-${ev.id}`} key={ev.id} className={`rounded-lg border p-1.5 transition cursor-pointer ${active?'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 shadow-sm':'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-emerald-300'}`}>
-                              <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 truncate">{ev.title||ev.id}</div>
-                              <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{toPlainDisplayText(ev.content)}</div>
-                            </div>
-                          );
-                        })}
+                    <div key={side.key} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40 p-2.5 space-y-2">
+                      <div className={`text-[10px] font-black uppercase tracking-wider ${side.tone === 'blue' ? 'text-blue-600' : 'text-red-600'}`}>
+                        {side.label}
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
 
-            {/* 法条 — 双列 */}
-            <div className="flex-1 min-h-0 flex flex-col">
-              <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center mb-2 shrink-0"><Scale className="w-4 h-4 mr-1.5 text-indigo-500"/>法条来源</h3>
-              <div className="grid grid-cols-2 gap-2 overflow-y-auto flex-1">
-                {(['plaintiff','defendant'] as const).map(side => {
-                  const sideLaws = side === 'plaintiff'
-                    ? lawRefs.filter(l => l.party === 'plaintiff' || !l.party)
-                    : lawRefs.filter(l => l.party === 'defendant');
-                  return (
-                    <div key={side}>
-                      <div className={`text-[10px] font-black uppercase tracking-wider mb-1.5 ${side==='plaintiff'?'text-blue-500':'text-red-500'}`}>{side==='plaintiff'?'原告':'被告'}</div>
-                      <div className="space-y-1.5">
-                        {sideLaws.length===0 && <div className="text-[10px] text-slate-400 dark:text-slate-500">暂无</div>}
-                        {sideLaws.map(law => {
-                          const active = activeLawId===law.id;
-                          return (
-                            <div id={`law-card-${law.id}`} key={law.id} className={`rounded-lg border p-1.5 transition cursor-pointer ${active?'border-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 shadow-sm':'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-indigo-300'}`}>
-                              <div className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 truncate">{law.title||law.id}</div>
-                              <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{toPlainDisplayText(law.content)}</div>
-                            </div>
-                          );
-                        })}
+                      <div>
+                        <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mb-1">证据</div>
+                        <div className="space-y-1.5">
+                          {sideEvidence.length === 0 && <div className="text-[10px] text-slate-400 dark:text-slate-500">暂无</div>}
+                          {sideEvidence.map((ev) => {
+                            const active = activeEvidenceId === ev.id;
+                            return (
+                              <div id={`evidence-card-${ev.id}`} key={`ev-${side.key}-${ev.id}`} className={`rounded-lg border p-1.5 transition cursor-pointer ${active ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 shadow-sm' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-emerald-300'}`}>
+                                <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 truncate">{ev.title || ev.id}</div>
+                                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{toPlainDisplayText(ev.content)}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 mb-1">法律条文</div>
+                        <div className="space-y-1.5">
+                          {sideLaws.length === 0 && <div className="text-[10px] text-slate-400 dark:text-slate-500">暂无</div>}
+                          {sideLaws.map((law) => {
+                            const active = activeLawId === law.id;
+                            return (
+                              <div id={`law-card-${law.id}`} key={`law-${side.key}-${law.id}`} className={`rounded-lg border p-1.5 transition cursor-pointer ${active ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 shadow-sm' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-indigo-300'}`}>
+                                <div className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 truncate">{law.title || law.id}</div>
+                                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">{toPlainDisplayText(law.content)}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   );
@@ -1346,7 +1326,6 @@ export default function CourtPage() {
           scores={scores}
           inputText={inputText}
           setInputText={setInputText}
-          evidence={evidence}
           onSpeak={handleSpeak}
           onBack={() => setView('setup')}
           onEndReview={handleEndReview}
