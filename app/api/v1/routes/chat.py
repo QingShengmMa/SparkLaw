@@ -68,16 +68,29 @@ async def chat_stream(
 
     async def generate():
         try:
-            from app.agents.legal_agent import LegalAgentService
             from app.agents.chat_methods import get_legal_agent
+            from app.tools.legal_tools import get_tools
             agent = get_legal_agent()
+
+            # 根据前端开关动态构建工具列表
+            tools = get_tools(
+                enable_search=request.enable_web_search,
+                enable_calculator=True,
+            )
+
             history = agent._get_session_history(request.session_id)
             await memory_manager.maybe_update_summary(request.session_id, history)
             summary_memory = memory_manager.get_summary(request.session_id)
+
+            # 知识库检索开关
+            legal_context = ""
+            if request.enable_knowledge_retrieve:
+                legal_context = await agent._retrieve_legal_context(request.question, top_k=3)
+
             semantic_memories = memory_manager.search_semantic_memory(
                 session_id=request.session_id, query=request.question, top_k=3
             )
-            legal_context = await agent._retrieve_legal_context(request.question, top_k=3)
+
             messages = agent._build_messages(
                 session_id=request.session_id,
                 user_input=request.question,
@@ -85,16 +98,27 @@ async def chat_stream(
                 summary_memory=summary_memory,
                 semantic_memories=semantic_memories,
                 legal_context=legal_context,
+                enable_deep_think=request.enable_deep_think,
             )
-            graph_to_use = agent.graph
-            if custom_config and custom_config.get("api_key"):
-                custom_llm = LLMFactory.create_llm(**{k: v for k, v in custom_config.items() if v})
-                graph_to_use = agent._build_react_graph(custom_llm.bind_tools(agent.tools))
-            async for chunk in agent.run_react_stream(messages, graph_to_use=graph_to_use, thread_id=request.thread_id):
+
+            # 构建使用动态工具列表的 graph
+            base_llm = LLMFactory.create_llm(**({
+                k: v for k, v in custom_config.items() if v
+            } if custom_config and custom_config.get("api_key") else {}))
+            llm_with_tools = base_llm.bind_tools(tools)
+            graph_to_use = agent._build_react_graph(llm_with_tools)
+
+            async for chunk in agent.run_react_event_stream(
+                messages,
+                graph_to_use=graph_to_use,
+                thread_id=request.thread_id,
+                enable_deep_think=request.enable_deep_think,
+                enable_web_search=request.enable_web_search,
+            ):
                 yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
         except Exception as e:
             app_logger.error(f"流式输出错误: {e}")
-            yield f"data: {json.dumps({'role':'error','content':str(e)}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'role':'error','content':str(e)}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 

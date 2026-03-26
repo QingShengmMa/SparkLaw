@@ -179,6 +179,46 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+#### Stable Docker workaround (recommended)
+
+If your network intermittently fails to pull manifests/layers (e.g. `content size of zero`), use fixed image tags and pre-pull once:
+
+```bash
+docker pull redis:7.4.2-alpine
+docker pull node:20.18.3-bookworm-slim
+docker compose up -d --build
+```
+
+#### Stable Docker workaround (recommended)
+
+If your network intermittently fails to pull manifests/layers (e.g. `content size of zero`), use fixed image tags and pre-pull once:
+
+```bash
+docker pull redis:7.4.2
+docker pull node:20.18.3-bookworm-slim
+docker compose up -d --build
+```
+
+#### Stable Docker workaround (recommended)
+
+If your network intermittently fails to pull manifests/layers (e.g. `content size of zero`), use fixed image tags and pre-pull once:
+
+```bash
+docker pull redis:7.4.2
+docker pull node:20.18.3-bookworm-slim
+docker compose up -d --build
+```
+
+#### Stable Docker workaround (recommended)
+
+If your network intermittently fails to pull manifests/layers (e.g. `content size of zero`), use fixed image tags and pre-pull once:
+
+```bash
+docker pull redis:7.4.2
+docker pull node:20.18.3-bookworm-slim
+docker compose up -d --build
+```
+
 First build takes 3–8 minutes depending on network speed. Subsequent restarts are near-instant.
 
 #### 4. Access the app
@@ -188,23 +228,6 @@ First build takes 3–8 minutes depending on network speed. Subsequent restarts 
 | 🌐 Frontend | http://localhost:3000 |
 | ⚙️ Backend API | http://localhost:8000 |
 | 📖 API Docs | http://localhost:8000/docs |
-
-#### Common commands
-
-```bash
-# Stream logs from all services
-docker compose logs -f
-
-# Stream logs from a specific service
-docker compose logs -f backend
-docker compose logs -f frontend
-
-# Stop all services
-docker compose down
-
-# Stop and remove all volumes (full reset)
-docker compose down -v
-```
 
 ---
 

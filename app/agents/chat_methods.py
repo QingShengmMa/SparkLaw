@@ -3,6 +3,7 @@
 """
 
 from __future__ import annotations
+import re
 from typing import Dict, List, Optional, Any, AsyncIterator
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from app.agents.legal_agent import (
@@ -11,6 +12,7 @@ from app.agents.legal_agent import (
     PersonalityType,
     normalize_personality,
     PERSONALITY_PROMPTS,
+    DEEP_THINK_SYSTEM_PROMPT,
 )
 from app.llm.factory import LLMFactory
 from app.core.memory_manager import memory_manager
@@ -25,6 +27,7 @@ def _build_messages(
     summary_memory: str = "",
     semantic_memories: Optional[List[str]] = None,
     legal_context: str = "",
+    enable_deep_think: bool = False,
 ) -> List:
     normalized = normalize_personality(personality)
     memory_block = []
@@ -35,7 +38,7 @@ def _build_messages(
     if legal_context:
         memory_block.append(f"[Relevant Legal References]\n{legal_context}")
 
-    system_content = self._get_system_prompt(normalized)
+    system_content = self._get_system_prompt(normalized, deep_think=enable_deep_think)
     if memory_block:
         system_content += "\n\n" + "\n\n".join(memory_block)
 
@@ -69,16 +72,65 @@ def _extract_text_from_chunk(self: LegalAgentService, chunk: Any) -> str:
     return ""
 
 
+def _extract_urls_from_output(output: Any) -> List[str]:
+    """从工具输出中提取 URL 列表（最多5个）。"""
+    text = str(output.content) if hasattr(output, "content") else str(output)
+    urls = re.findall(r'https?://[^\s"<>]+', text)
+    seen: set = set()
+    result: List[str] = []
+    for u in urls:
+        u = u.rstrip('.,;)')
+        if u not in seen:
+            seen.add(u)
+            result.append(u)
+        if len(result) >= 5:
+            break
+    return result
+
+
+def _extract_search_items_from_output(output: Any) -> List[Dict[str, str]]:
+    """从搜索工具输出中提取结构化条目（标题/链接/摘要）。"""
+    text = str(output.content) if hasattr(output, "content") else str(output)
+    blocks = [b.strip() for b in text.split("\n\n") if b.strip()]
+    items: List[Dict[str, str]] = []
+
+    for block in blocks:
+        title = ""
+        url = ""
+        snippet = ""
+        for ln in block.splitlines():
+            line = ln.strip()
+            if line.startswith("标题："):
+                title = line.replace("标题：", "", 1).strip()
+            elif line.startswith("链接："):
+                url = line.replace("链接：", "", 1).strip()
+            elif line.startswith("摘要："):
+                snippet = line.replace("摘要：", "", 1).strip()
+        if url:
+            items.append({"title": title, "url": url, "snippet": snippet})
+        if len(items) >= 8:
+            break
+
+    return items
+
+
 async def run_react_event_stream(
     self: LegalAgentService,
     messages: List[Any],
     graph_to_use=None,
     thread_id: Optional[str] = None,
+    enable_deep_think: bool = False,
+    enable_web_search: bool = False,
 ) -> AsyncIterator[Dict[str, Any]]:
     graph = graph_to_use or self.graph
     initial_state: LegalAgentGraphState = {"messages": messages}
     final_chunks: List[str] = []
+    think_chunks: List[str] = []
+    in_thinking = False
     config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+
+    if enable_deep_think:
+        yield {"type": "thinking_start"}
 
     event_stream = (
         graph.astream_events(initial_state, config=config, version="v2")
@@ -88,19 +140,56 @@ async def run_react_event_stream(
 
     async for evt in event_stream:
         event_type = evt.get("event")
+
         if event_type == "on_chat_model_stream":
-            text = self._extract_text_from_chunk(evt.get("data", {}).get("chunk"))
-            if text:
-                final_chunks.append(text)
-                yield {"type": "text_chunk", "content": text}
+            chunk = evt.get("data", {}).get("chunk")
+            # 支持 DeepSeek-R1 等带 reasoning_content 的模型
+            reasoning = getattr(chunk, "additional_kwargs", {}).get("reasoning_content") or ""
+            if reasoning and enable_deep_think:
+                in_thinking = True
+                think_chunks.append(reasoning)
+                yield {"type": "thinking_chunk", "content": reasoning}
+                continue
+            text = self._extract_text_from_chunk(chunk)
+            if not text:
+                continue
+            if in_thinking:
+                in_thinking = False
+                yield {"type": "thinking_end", "thinking": "".join(think_chunks)}
+            final_chunks.append(text)
+            yield {"type": "text_chunk", "content": text}
+
         elif event_type == "on_tool_start":
-            yield {
-                "type": "tool_start",
-                "tool_name": evt.get("name") or evt.get("data", {}).get("name") or "unknown_tool",
-                "input": evt.get("data", {}).get("input"),
-            }
+            tool_name = evt.get("name") or evt.get("data", {}).get("name") or "unknown_tool"
+            tool_input = evt.get("data", {}).get("input") or {}
+            if enable_web_search and "search" in tool_name.lower():
+                query = ""
+                if isinstance(tool_input, dict):
+                    query = tool_input.get("query") or tool_input.get("__arg1") or str(tool_input)
+                else:
+                    query = str(tool_input)
+                yield {"type": "search_start", "tool_name": tool_name, "query": query, "input": tool_input}
+            else:
+                yield {"type": "tool_start", "tool_name": tool_name, "input": tool_input}
+
         elif event_type in ("on_tool_end", "on_tool_error"):
-            yield {"type": "tool_end", "tool_name": evt.get("name") or "unknown_tool"}
+            tool_name = evt.get("name") or "unknown_tool"
+            output = evt.get("data", {}).get("output") or ""
+            if enable_web_search and "search" in tool_name.lower():
+                urls = _extract_urls_from_output(output)
+                items = _extract_search_items_from_output(output)
+                yield {
+                    "type": "search_end",
+                    "tool_name": tool_name,
+                    "urls": urls,
+                    "items": items,
+                    "snippet": str(output)[:400] if output else "",
+                }
+            else:
+                yield {"type": "tool_end", "tool_name": tool_name}
+
+    if in_thinking or (enable_deep_think and think_chunks):
+        yield {"type": "thinking_end", "thinking": "".join(think_chunks)}
 
     yield {"type": "final", "answer": "".join(final_chunks)}
 

@@ -31,6 +31,28 @@ PERSONALITY_PROMPTS = {
     "educator": """【普法导师】\n你是耐心的法律教育者，用通俗易懂的语言解释法律概念，举例说明，鼓励提问。""",
 }
 
+DEEP_THINK_SYSTEM_PROMPT = """你是一个严谨、专业、保守的法律AI Agent，专注于{jurisdiction}法律体系。
+在回答法律问题前，必须严格按照以下深度思考流程进行推理，完成后再输出最终回答。
+
+**深度思考流程（Chain-of-Thought）**：
+
+1. **事实提取**：准确列出用户提供的所有关键事实、背景和明确问题。指出缺失的重要事实（如管辖区、时间等）。
+2. **法律定位**：明确适用的司法管辖区、相关法律法规、最新判例或监管规定。
+3. **IRAC 结构分析**：
+   - **Issue（问题）**：明确核心法律问题。
+   - **Rule（规则）**：准确陈述适用的法律规则、要件和关键法条/判例。
+   - **Application（适用）**：将事实与规则逐条对应分析，讨论匹配程度、例外情况和反驳意见。
+   - **Conclusion（结论）**：给出清晰、平衡的结论。
+4. **风险与实务考量**：指出潜在风险、实务操作难点、替代方案及不确定性。
+5. **输出规范**：
+   - 使用清晰的标题和小节结构（Issue / Rule / Application / Conclusion）。
+   - 语言中性、客观、专业，避免绝对化表述。
+   - 每处重要观点必须引用具体法条或判例（如果适用）。
+   - 回答末尾始终添加免责声明：「以上分析仅供参考，不构成正式法律意见，请咨询合格律师获取个性化建议。」
+
+始终保持谨慎：如果事实不足、法律模糊或超出知识范围，必须明确说明并建议补充信息或寻求专业律师帮助。
+"""
+
 
 def normalize_personality(personality: PersonalityType) -> str:
     return "cost_expert" if personality == "cost" else personality
@@ -59,7 +81,9 @@ class LegalAgentService:
             app_logger.error(f"❌ 法律 Agent 服务初始化失败: {str(e)}")
             raise
 
-    def _get_system_prompt(self, personality: PersonalityType = "machine") -> str:
+    def _get_system_prompt(self, personality: PersonalityType = "machine", deep_think: bool = False) -> str:
+        if deep_think:
+            return DEEP_THINK_SYSTEM_PROMPT.format(jurisdiction=settings.DEFAULT_JURISDICTION)
         base = f"""你是一个专业的法律咨询助手，专注于{settings.DEFAULT_JURISDICTION}法律体系。
 
 **重要原则：**
@@ -83,11 +107,21 @@ class LegalAgentService:
         return self.sessions[session_id]
 
     async def _retrieve_legal_context(self, question: str, top_k: int = 3) -> str:
+        """
+        检索法律上下文：优先从法律条文库（legal_corpus）检索，
+        若法律库为空则回退到合同库 retrieve_clauses。
+        """
         try:
-            results = await self.rag_service.retrieve_clauses(query=question, top_k=top_k)
+            results = await self.rag_service.retrieve_law(query=question, top_k=top_k)
+            if not results:
+                results = await self.rag_service.retrieve_clauses(query=question, top_k=top_k)
             if not results:
                 return ""
-            return "\n".join(f"[{i}] {item.get('text','')[:300]}" for i, item in enumerate(results, 1) if item.get("text"))
+            return "\n".join(
+                f"[{i}] {item.get('text', '')[:300]}"
+                for i, item in enumerate(results, 1)
+                if item.get("text")
+            )
         except Exception as e:
             app_logger.warning(f"法律上下文检索失败: {str(e)}")
             return ""

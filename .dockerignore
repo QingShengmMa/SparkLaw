@@ -42,6 +42,9 @@ frontend/npm-debug.log*
 logs/
 data/
 chroma_db/
+law_texts/
+国家法律法规数据库/
+scripts/
 
 # ── IDE / OS ─────────────────────────────────────────────────
 .vscode/

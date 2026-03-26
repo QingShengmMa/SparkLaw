@@ -3,13 +3,11 @@
 # 一键启动：docker compose up -d --build
 # =============================================================
 
-version: '3.9'
-
 services:
 
   # ── Redis（会话 / Celery broker）─────────────────────────────
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.2-alpine
     container_name: sparklaw-redis
     restart: unless-stopped
     command: redis-server --save 60 1 --loglevel warning

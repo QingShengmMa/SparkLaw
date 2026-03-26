@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Save, Loader2, CheckCircle, AlertCircle, User, Sliders, Palette, Trash2 } from 'lucide-react';
+import { Save, Loader2, CheckCircle, AlertCircle, User, Sliders, Palette, Trash2, Cloud, Laptop } from 'lucide-react';
 import { useChatStore, PersonalityType } from '@/store/chatStore';
 import { useTheme } from '@/hooks/useTheme';
 import { useSettings } from '@/hooks/useSettings';
+import { checkHealth, type HealthResponse } from '@/lib/api';
 
 type SettingSection = 'general' | 'model' | 'appearance';
 
@@ -49,6 +50,8 @@ const personalities = [
 
 export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<SettingSection>('general');
+  const [apiMode, setApiMode] = useState<'cloud' | 'local'>('cloud');
+  const [runtimeLlm, setRuntimeLlm] = useState<HealthResponse | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [baseUrl, setBaseUrl] = useState('https://api.groq.com/openai/v1');
   const [model, setModel] = useState('llama-3.1-70b-versatile');
@@ -64,23 +67,29 @@ export default function SettingsPage() {
 
   // 从 localStorage 加载配置
   useEffect(() => {
+    const savedMode = localStorage.getItem('sparklaw_api_mode') as 'cloud' | 'local' | null;
     const savedApiKey = localStorage.getItem('sparklaw_api_key');
     const savedBaseUrl = localStorage.getItem('sparklaw_base_url');
     const savedModel = localStorage.getItem('sparklaw_model');
     const savedTemperature = localStorage.getItem('sparklaw_temperature');
     const savedMaxTokens = localStorage.getItem('sparklaw_max_tokens');
 
+    if (savedMode === 'cloud' || savedMode === 'local') setApiMode(savedMode);
     if (savedApiKey) setApiKey(savedApiKey);
     if (savedBaseUrl) setBaseUrl(savedBaseUrl);
     if (savedModel) setModel(savedModel);
     if (savedTemperature) setTemperature(parseFloat(savedTemperature));
     if (savedMaxTokens) setMaxTokens(parseInt(savedMaxTokens));
+
+    checkHealth()
+      .then((info) => setRuntimeLlm(info))
+      .catch(() => setRuntimeLlm(null));
   }, []);
 
   // 保存配置
   const handleSave = async () => {
-    if (!apiKey.trim()) {
-      setMessage({ type: 'error', text: '请输入 API Key' });
+    if (apiMode === 'local' && !apiKey.trim()) {
+      setMessage({ type: 'error', text: '本地 API 模式下请输入 API Key' });
       return;
     }
 
@@ -88,13 +97,35 @@ export default function SettingsPage() {
     setMessage(null);
 
     try {
+      localStorage.setItem('sparklaw_api_mode', apiMode);
       localStorage.setItem('sparklaw_api_key', apiKey);
       localStorage.setItem('sparklaw_base_url', baseUrl);
       localStorage.setItem('sparklaw_model', model);
       localStorage.setItem('sparklaw_temperature', temperature.toString());
       localStorage.setItem('sparklaw_max_tokens', maxTokens.toString());
 
-      setMessage({ type: 'success', text: '配置已保存！刷新页面后生效。' });
+      // 若本地模式，用新 key 请求健康接口以显示正确模型
+      if (apiMode === 'local' && apiKey.trim()) {
+        try {
+          const resolvedBase = (await import('@/lib/api')).getApiBaseUrl();
+          const hdrs: HeadersInit = {
+            'Content-Type': 'application/json',
+            'X-API-Key': apiKey.trim(),
+          };
+          if (model.trim()) hdrs['X-API-Model'] = model.trim();
+          const resp = await fetch(`${resolvedBase}/api/health`, { headers: hdrs });
+          if (resp.ok) {
+            const info = (await resp.json()) as import('@/lib/api').HealthResponse;
+            setRuntimeLlm(info);
+          }
+        } catch {
+          // ignore health refresh error
+        }
+      } else {
+        const info = await checkHealth();
+        setRuntimeLlm(info);
+      }
+      setMessage({ type: 'success', text: '配置已保存！已切换至' + (apiMode === 'local' ? '本地' : '云端') + '模式。' });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : '保存失败';
       setMessage({ type: 'error', text: `保存失败：${message}` });
@@ -282,6 +313,41 @@ export default function SettingsPage() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   配置 LLM API 和模型参数
                 </p>
+              </div>
+
+              <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">API 来源模式</p>
+                    <p className="text-xs text-muted-foreground">
+                      云端 = 使用服务端 .env（默认 Groq）；本地 = 使用你在浏览器里填写的 Key/BaseURL/模型
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setApiMode((prev) => (prev === 'cloud' ? 'local' : 'cloud'))}
+                    className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent transition-smooth"
+                  >
+                    {apiMode === 'cloud' ? <Cloud size={14} /> : <Laptop size={14} />}
+                    当前：{apiMode === 'cloud' ? '云端' : '本地'}（点击切换）
+                  </button>
+                </div>
+
+                <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-800/50 dark:bg-blue-950/30 dark:text-blue-200">
+                  {apiMode === 'local' && apiKey ? (
+                    <>
+                      当前生效：<span className="font-semibold text-green-700 dark:text-green-300 ml-1">本地模式</span>
+                      <span className="font-mono ml-2">{model || runtimeLlm?.llm_model || '未知'}</span>
+                      <span className="ml-2 opacity-60">（浏览器本地 Key 优先）</span>
+                    </>
+                  ) : (
+                    <>
+                      服务端当前模型：
+                      <span className="font-mono ml-1">{runtimeLlm?.llm_model || '未知'}</span>
+                      <span className="ml-2 opacity-80">(mode: {runtimeLlm?.llm_mode || 'unknown'})</span>
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-4">

@@ -16,6 +16,9 @@ class ChatRequest(BaseModel):
         default="empathy",
         description="律师人格"
     )
+    enable_web_search: bool = Field(default=False, description="是否开启联网搜索")
+    enable_deep_think: bool = Field(default=False, description="是否开启深度思考模式")
+    enable_knowledge_retrieve: bool = Field(default=False, description="是否开启知识库检索")
     
     model_config = {
         "json_schema_extra": {

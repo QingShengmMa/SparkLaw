@@ -131,3 +131,10 @@ eval/reports/
 .cursor/
 *.local.json
 
+# Local legal corpus and generated outputs
+国家法律法规数据库/
+law_texts/
+
+# Local utility scripts (not part of production runtime)
+scripts/
+

@@ -51,7 +51,6 @@ RUN groupadd --gid 1001 sparklaw \
 
 # Copy application source
 COPY app/ ./app/
-COPY app/main.py ./main.py 2>/dev/null || true
 
 # Create directories and set ownership
 RUN mkdir -p logs data && chown -R sparklaw:sparklaw /app

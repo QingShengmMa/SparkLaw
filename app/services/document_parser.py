@@ -21,7 +21,7 @@ class DocumentParser:
         SUPPORTED_EXTENSIONS: 支持的文件扩展名集合
     """
     
-    SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc"}
+    SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt"}
     
     def __init__(self):
         """初始化文档解析器"""
@@ -69,6 +69,8 @@ class DocumentParser:
                 text = self._parse_pdf(content)
             elif file_ext in {".docx", ".doc"}:
                 text = self._parse_docx(content)
+            elif file_ext == ".txt":
+                text = self._parse_txt(content)
             else:
                 raise HTTPException(status_code=400, detail=f"未实现的文件格式: {file_ext}")
             
@@ -178,6 +180,16 @@ class DocumentParser:
             app_logger.error(f"❌ Word 文档解析失败: {str(e)}")
             raise
     
+    def _parse_txt(self, content: bytes) -> str:
+        """解析 UTF-8/GBK 等常见编码的纯文本文件。"""
+        for enc in ("utf-8", "utf-8-sig", "gbk", "gb18030"):
+            try:
+                return content.decode(enc, errors="strict")
+            except UnicodeDecodeError:
+                continue
+        # 最后兜底，避免完全失败
+        return content.decode("utf-8", errors="ignore")
+
     def _clean_text(self, text: str) -> str:
         """
         清洗文本内容

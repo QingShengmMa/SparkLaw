@@ -196,16 +196,31 @@ class CourtDebateAgent:
         if existing:
             return existing
 
-        results = await self.rag.retrieve_clauses(state["case_description"], top_k=8, recall_top_k=20)
-        classified = self.rag.classify_retrieved_candidates(results)
-        laws: List[Dict[str, str]] = []
+        # 优先从法律条文库（legal_corpus）检索，若法条库为空则回退到合同库
+        results = await self.rag.retrieve_law(
+            query=state["case_description"], top_k=8, recall_top_k=20
+        ) if hasattr(self.rag, "retrieve_law") else []
 
-        for idx, item in enumerate(classified.get("laws") or [], 1):
+        if not results:
+            raw = await self.rag.retrieve_clauses(
+                state["case_description"], top_k=8, recall_top_k=20
+            )
+            classified = self.rag.classify_retrieved_candidates(raw)
+            results = classified.get("laws") or []
+            # 如果合同库也没有法条，就把 evidences 也当作備选
+            if not results:
+                results = classified.get("evidences") or []
+
+        laws: List[Dict[str, str]] = []
+        for idx, item in enumerate(results, 1):
             text = (item.get("text") or "").strip()
             if not text:
                 continue
             meta = item.get("metadata") or {}
-            title = str(meta.get("article") or meta.get("chapter") or f"参考法条 {idx}")
+            title = str(
+                meta.get("article") or meta.get("chapter")
+                or meta.get("law_name") or f"参考法条 {idx}"
+            )
             laws.append({
                 "id": f"law_{idx}",
                 "title": title,
@@ -227,32 +242,9 @@ class CourtDebateAgent:
         existing = state.get("evidence_list") or []
         if existing:
             return existing
-
-        results = await self.rag.retrieve_clauses(state["case_description"], top_k=8, recall_top_k=20)
-        classified = self.rag.classify_retrieved_candidates(results)
-        out: List[Dict[str, str]] = []
-
-        for idx, item in enumerate(classified.get("evidences") or [], 1):
-            text = (item.get("text") or "").strip()
-            if not text:
-                continue
-            meta = item.get("metadata") or {}
-            out.append({
-                "id": f"evidence_{idx}",
-                "title": str(meta.get("title") or meta.get("section") or f"事实证据 {idx}"),
-                "content": text[:380],
-                "source": str(meta.get("source") or meta.get("contract_id") or "RAG检索事实材料"),
-            })
-
-        if not out:
-            out.append({
-                "id": "evidence_1",
-                "title": "证据不足提示",
-                "content": "未检索到可用事实证据，请在发言中明确证据不足。",
-                "source": "系统提示",
-            })
-
-        return self._dedup_evidence_list(out)
+        # 庭审事实证据不从用户上传的合同向量库检索，避免早期测试数据污染庭审。
+        # 证据由 _node_simulate_evidence 节点用 LLM 根据案情生成。
+        return []
 
     # ────── Prompt helpers ──────
 

@@ -568,6 +568,39 @@ function LiveView(props: {
   });
   const currentStageIndex = TRIAL_STAGES.indexOf(currentStage);
 
+  const normalizeParty = (raw?: string, title?: string, content?: string): 'plaintiff' | 'defendant' | 'both' => {
+    const src = `${raw || ''} ${(title || '')} ${(content || '')}`.toLowerCase();
+    const hasPlaintiff = /plaintiff|原告|申请人|上诉人/.test(src);
+    const hasDefendant = /defendant|被告|被申请人|被上诉人/.test(src);
+    if (hasPlaintiff && hasDefendant) return 'both';
+    if (hasPlaintiff) return 'plaintiff';
+    if (hasDefendant) return 'defendant';
+    if (raw === 'both' || raw === '双方') return 'both';
+    return 'both';
+  };
+
+  const groupedEvidence = {
+    plaintiff: evidenceRefs.filter(e => {
+      const p = normalizeParty(e.party, e.title, e.content);
+      return p === 'plaintiff' || p === 'both';
+    }),
+    defendant: evidenceRefs.filter(e => {
+      const p = normalizeParty(e.party, e.title, e.content);
+      return p === 'defendant' || p === 'both';
+    }),
+  };
+
+  const groupedLaws = {
+    plaintiff: lawRefs.filter(l => {
+      const p = normalizeParty(l.party, l.title, l.content);
+      return p === 'plaintiff' || p === 'both';
+    }),
+    defendant: lawRefs.filter(l => {
+      const p = normalizeParty(l.party, l.title, l.content);
+      return p === 'defendant' || p === 'both';
+    }),
+  };
+
   return (
     <div className="flex-1 flex flex-col bg-slate-50 dark:bg-slate-800 overflow-hidden">
       <header className="bg-white dark:bg-slate-900 border-b border-slate-200 px-5 lg:px-6 py-3 flex items-center justify-between shrink-0">

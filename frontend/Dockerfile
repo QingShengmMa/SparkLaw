@@ -1,21 +1,19 @@
 # =============================================================
 # SparkLaw — Frontend Dockerfile (Production)
-# Multi-stage build · node:20-alpine · non-root user
+# Multi-stage build · node:20.18.3-bookworm-slim · non-root user
 # =============================================================
 
 # ── Stage 1: dependency installer ────────────────────────────
-FROM node:20-alpine AS deps
+FROM node:20.18.3-bookworm-slim AS deps
 
 WORKDIR /app
-
-RUN apk add --no-cache libc6-compat
 
 COPY package.json package-lock.json* ./
 RUN npm ci --frozen-lockfile
 
 
 # ── Stage 2: builder ─────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:20.18.3-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -31,7 +29,7 @@ RUN npm run build
 
 
 # ── Stage 3: runtime ─────────────────────────────────────────
-FROM node:20-alpine AS runtime
+FROM node:20.18.3-bookworm-slim AS runtime
 
 LABEL org.opencontainers.image.title="SparkLaw Frontend"
 LABEL org.opencontainers.image.description="Chinese Legal AI Frontend — Next.js"
@@ -44,12 +42,14 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 
+# Install wget for healthcheck (slim has no wget by default)
+RUN apt-get update && apt-get install -y --no-install-recommends wget && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user
-RUN addgroup --system --gid 1001 nodejs \
-    && adduser --system --uid 1001 nextjs
+RUN groupadd --system --gid 1001 nodejs \
+    && useradd --system --uid 1001 --gid nodejs nextjs
 
 # Copy only what's needed to run
-COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 

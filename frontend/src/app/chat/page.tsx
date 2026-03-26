@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Download } from 'lucide-react';
+import { Send, Download, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { getApiBaseUrl } from '@/lib/api';
@@ -22,12 +22,29 @@ interface ToolCall {
   status: 'running' | 'success';
 }
 
+interface SearchResultItem {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+interface SearchResult {
+  query: string;
+  urls: string[];
+  snippet: string;
+  items?: SearchResultItem[];
+  status: 'searching' | 'done';
+}
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
   isError?: boolean;
   statusText?: string;
   tool_calls?: ToolCall[];
+  search_results?: SearchResult[];
+  thinking?: string;
+  thinking_status?: 'thinking' | 'done';
 }
 
 interface ChatSseEvent {
@@ -39,6 +56,11 @@ interface ChatSseEvent {
   content?: string;
   tool_name?: string;
   input?: any;
+  thinking?: string;
+  query?: string;
+  urls?: string[];
+  items?: SearchResultItem[];
+  snippet?: string;
 }
 
 export default function ChatPage() {
@@ -49,6 +71,9 @@ export default function ChatPage() {
   const [enableDeepThink, setEnableDeepThink] = useState(false);
   const [enableKnowledgeRetrieve, setEnableKnowledgeRetrieve] = useState(false);
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
+  const [searchDrawerOpen, setSearchDrawerOpen] = useState(false);
+  const [searchDrawerItems, setSearchDrawerItems] = useState<SearchResultItem[]>([]);
+  const [searchDrawerQuery, setSearchDrawerQuery] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -127,9 +152,34 @@ export default function ChatPage() {
       isError: current.isError,
       statusText: current.statusText,
       tool_calls: current.tool_calls || [],
+      search_results: current.search_results || [],
+      thinking: current.thinking,
+      thinking_status: current.thinking_status,
     });
 
     return copy;
+  };
+
+  const collectSearchItems = (messages: Message[]): SearchResultItem[] => {
+    const out: SearchResultItem[] = [];
+    const seen = new Set<string>();
+    for (const msg of messages) {
+      for (const sr of msg.search_results || []) {
+        for (const item of sr.items || []) {
+          if (!item.url || seen.has(item.url)) continue;
+          seen.add(item.url);
+          out.push(item);
+        }
+      }
+    }
+    return out;
+  };
+
+  const openSearchDrawer = (query: string, items: SearchResultItem[]) => {
+    const finalItems = items && items.length > 0 ? items : collectSearchItems(localMessages);
+    setSearchDrawerItems(finalItems);
+    setSearchDrawerQuery(query);
+    setSearchDrawerOpen(true);
   };
 
   const getFriendlyErrorMessage = (status?: number): string => {
@@ -178,6 +228,7 @@ export default function ChatPage() {
     let errorContent = '';
 
     try {
+      const apiMode = (localStorage.getItem('sparklaw_api_mode') as 'cloud' | 'local' | null) || 'cloud';
       const apiKey = localStorage.getItem('sparklaw_api_key');
       const baseUrl = localStorage.getItem('sparklaw_base_url');
       const model = localStorage.getItem('sparklaw_model');
@@ -185,11 +236,11 @@ export default function ChatPage() {
       const maxTokens = localStorage.getItem('sparklaw_max_tokens');
 
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (apiKey) headers['X-API-Key'] = apiKey;
-      if (baseUrl) headers['X-API-Base-URL'] = baseUrl;
-      if (model) headers['X-API-Model'] = model;
-      if (temperature) headers['X-API-Temperature'] = temperature;
-      if (maxTokens) headers['X-API-Max-Tokens'] = maxTokens;
+      if (apiMode === 'local' && apiKey) headers['X-API-Key'] = apiKey;
+      if (apiMode === 'local' && baseUrl) headers['X-API-Base-URL'] = baseUrl;
+      if (apiMode === 'local' && model) headers['X-API-Model'] = model;
+      if (apiMode === 'local' && temperature) headers['X-API-Temperature'] = temperature;
+      if (apiMode === 'local' && maxTokens) headers['X-API-Max-Tokens'] = maxTokens;
 
       const resolvedBase = getApiBaseUrl();
 
@@ -201,6 +252,9 @@ export default function ChatPage() {
           session_id: sessionId,
           thread_id: threadId,
           personality,
+          enable_web_search: enableWebSearch,
+          enable_deep_think: enableDeepThink,
+          enable_knowledge_retrieve: enableKnowledgeRetrieve,
         }),
         signal: AbortSignal.timeout(120_000),
       });
@@ -243,6 +297,60 @@ export default function ChatPage() {
                 statusText: undefined,
                 tool_calls: current.tool_calls || [],
               }))
+            );
+          } else if (evType === 'thinking_start') {
+            setLocalMessages((prev) =>
+              updateStreamingAssistant(prev, (current) => ({
+                ...current,
+                statusText: '深度思考中...',
+                thinking: '',
+                thinking_status: 'thinking' as const,
+              }))
+            );
+          } else if (evType === 'thinking_chunk') {
+            const chunk = data.content || '';
+            setLocalMessages((prev) =>
+              updateStreamingAssistant(prev, (current) => ({
+                ...current,
+                statusText: '深度思考中...',
+                thinking: (current.thinking || '') + chunk,
+                thinking_status: 'thinking' as const,
+              }))
+            );
+          } else if (evType === 'thinking_end') {
+            setLocalMessages((prev) =>
+              updateStreamingAssistant(prev, (current) => ({
+                ...current,
+                statusText: undefined,
+                thinking: data.thinking || current.thinking || '',
+                thinking_status: 'done' as const,
+              }))
+            );
+          } else if (evType === 'search_start') {
+            const query = data.query || data.tool_name || '';
+            setLocalMessages((prev) =>
+              updateStreamingAssistant(prev, (current) => ({
+                ...current,
+                statusText: `正在搜索：${query}`,
+                search_results: [
+                  ...(current.search_results || []),
+                  { query, urls: [], snippet: '', status: 'searching' as const },
+                ],
+              }))
+            );
+          } else if (evType === 'search_end') {
+            const urls: string[] = data.urls || [];
+            const items: SearchResultItem[] = data.items || [];
+            const snippet: string = data.snippet || '';
+            setLocalMessages((prev) =>
+              updateStreamingAssistant(prev, (current) => {
+                const results = [...(current.search_results || [])];
+                const last = results[results.length - 1];
+                if (last && last.status === 'searching') {
+                  results[results.length - 1] = { ...last, urls, items, snippet, status: 'done' as const };
+                }
+                return { ...current, statusText: undefined, search_results: results };
+              })
             );
           } else if (evType === 'tool_start') {
             const toolName = data.tool_name || 'unknown_tool';
@@ -411,6 +519,54 @@ export default function ChatPage() {
           {toast}
         </div>
       )}
+
+      {searchDrawerOpen && (
+        <div className="fixed inset-0 z-40">
+          <div className="absolute inset-0 bg-black/20" onClick={() => setSearchDrawerOpen(false)} />
+          <aside className="absolute right-0 top-0 h-full w-full max-w-md border-l border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-[#0E1322]">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+              <div>
+                <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">搜索结果</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">{searchDrawerQuery || '本轮联网检索'}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSearchDrawerOpen(false)}
+                className="rounded-md p-1 text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                aria-label="关闭搜索侧边栏"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="h-[calc(100%-57px)] overflow-y-auto p-3">
+              {searchDrawerItems.length === 0 ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300">
+                  暂无可展示网页内容。
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {searchDrawerItems.map((item, idx) => (
+                    <div key={`${item.url}-${idx}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/40">
+                      <div className="mb-1 text-xs font-semibold text-slate-800 dark:text-slate-100">{item.title || `结果 ${idx + 1}`}</div>
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mb-1 block break-all text-[11px] text-blue-600 underline hover:text-blue-700 dark:text-blue-300"
+                      >
+                        {item.url}
+                      </a>
+                      <div className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+                        {item.snippet || '暂无摘要'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </aside>
+        </div>
+      )}
       {/* 主聊天区域 - 水平居中、单列布局 */}
       <div className="flex flex-1 w-full flex-col items-center overflow-y-auto">
         <div className="w-full max-w-4xl px-4 py-8">
@@ -483,6 +639,76 @@ export default function ChatPage() {
                       <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
                     ) : (
                       <div>
+                        {/* 深度思考链路（与正式回答分区显示） */}
+                        {message.thinking && (
+                          <details
+                            className="mb-3 rounded-lg border border-slate-200 bg-slate-50/90 dark:border-slate-800 dark:bg-slate-900/40"
+                            open={message.thinking_status === 'thinking'}
+                          >
+                            <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2 text-[11px] font-medium tracking-wide text-slate-600 dark:text-slate-300">
+                              <span className={message.thinking_status === 'thinking' ? 'animate-spin' : ''}>🧠</span>
+                              {message.thinking_status === 'thinking' ? '思考中（内部推理）' : '查看思考过程（内部推理）'}
+                            </summary>
+                            <div className="max-h-52 overflow-y-auto border-t border-slate-200/80 px-3 py-2 dark:border-slate-700/80">
+                              <pre className="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+                                {message.thinking}
+                              </pre>
+                            </div>
+                          </details>
+                        )}
+
+                        {message.thinking && message.content && !message.isError && (
+                          <div className="mb-2 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                            正式回答
+                          </div>
+                        )}
+
+                        {/* 联网搜索结果 */}
+                        {message.search_results && message.search_results.length > 0 && (
+                          <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800/50 dark:bg-blue-950/30 px-3 py-2">
+                            <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300">
+                              <span>🔍</span>
+                              <span>联网搜索</span>
+                            </div>
+                            {message.search_results.map((sr, srIdx) => {
+                              const readCount = (sr.items && sr.items.length > 0)
+                                ? sr.items.length
+                                : sr.urls.length;
+                              return (
+                                <div key={srIdx} className="mb-1.5">
+                                  <div className="mb-1 text-[11px] text-blue-600 dark:text-blue-400">
+                                    搜索词：{sr.query}
+                                    {sr.status === 'searching' && (
+                                      <span className="ml-2 inline-block h-2.5 w-2.5 animate-spin rounded-full border border-blue-400 border-t-transparent" />
+                                    )}
+                                  </div>
+
+                                  {sr.status === 'done' && readCount > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openSearchDrawer(sr.query, sr.items || [])}
+                                      className="inline-flex items-center gap-1 rounded-full border border-blue-300 bg-white px-2.5 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-800/50"
+                                    >
+                                      已阅读 {readCount} 个网页
+                                    </button>
+                                  )}
+
+                                  {sr.status === 'done' && readCount === 0 && (
+                                    <span className="text-[11px] text-blue-500">已完成搜索</span>
+                                  )}
+
+                                  {sr.snippet && readCount === 0 && (
+                                    <div className="mt-1 rounded border border-blue-100 bg-white/70 px-2 py-1 text-[11px] leading-relaxed text-blue-700 dark:border-blue-800/50 dark:bg-blue-950/20 dark:text-blue-200">
+                                      {sr.snippet}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* 工具调用轨迹 */}
                         {message.tool_calls && message.tool_calls.length > 0 && (
                           <details className="mb-3 rounded-md border border-gray-200 bg-gray-50 px-2 py-2 text-xs text-gray-600" open>
                             <summary className="cursor-pointer select-none font-medium text-gray-600">工具调用轨迹</summary>
@@ -510,11 +736,18 @@ export default function ChatPage() {
 
                         {message.statusText && !message.content && (
                           <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
-                            <div className="h-2 w-2 animate-pulse rounded-full bg-muted-foreground" />
-                            <div className="h-2 w-2 animate-pulse rounded-full bg-muted-foreground" style={{ animationDelay: '0.2s' }} />
-                            <div className="h-2 w-2 animate-pulse rounded-full bg-muted-foreground" style={{ animationDelay: '0.4s' }} />
-                            <span className="ml-1">{message.statusText}</span>
+                            <div className="flex gap-1">
+                              <div className="h-2 w-2 animate-bounce rounded-full bg-blue-400" style={{ animationDelay: '0ms' }} />
+                              <div className="h-2 w-2 animate-bounce rounded-full bg-blue-400" style={{ animationDelay: '150ms' }} />
+                              <div className="h-2 w-2 animate-bounce rounded-full bg-blue-400" style={{ animationDelay: '300ms' }} />
+                            </div>
+                            <span className="ml-1 text-xs">{message.statusText}</span>
                           </div>
+                        )}
+
+                        {/* 有内容但仍在流式输出时的光标动画 */}
+                        {message.content && !message.isError && loading && (
+                          <span className="inline-block h-4 w-0.5 animate-pulse bg-current ml-0.5 align-middle" />
                         )}
 
                         {message.isError ? (

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { MessageSquare, MoreHorizontal, Pencil, Pin, Plus, Scale, Trash2, Wrench, PanelLeftClose, PanelLeftOpen, Settings } from 'lucide-react';
+import { MessageSquare, MoreHorizontal, Pencil, Pin, Plus, Scale, Trash2, Wrench, PanelLeftClose, PanelLeftOpen, Settings, type LucideIcon } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import ScaleIcon from './ScaleIcon';
 import { useChatStore } from '@/store/chatStore';
@@ -11,7 +11,7 @@ import { useChatStore } from '@/store/chatStore';
 interface NavItem {
   name: string;
   href: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
 }
 
 const navigation: NavItem[] = [

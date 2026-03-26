@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 from langchain_core.tools import tool
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 from app.core.logger import app_logger
@@ -67,50 +66,45 @@ def calculate_labor_compensation(monthly_salary: float, working_years: float) ->
 
 
 @tool
-def search_latest_legal_cases(query: str, max_results: int = 3) -> str:
+def search_latest_legal_cases(query: str, max_results: int = 5) -> str:
     """
-    检索最新法律案例与实务资讯（联网优先，失败时回退到 mock 数据）。
+    联网搜索与用户问题直接相关的最新法律资讯、法规条文及司法判例。
 
-    适用场景：用户询问"最近判例如何裁判""最新劳动争议案例""同类案件怎么判"。
+    适用场景：用户询问相关法律规定、最新判例、司法解释、监管政策等。
+    使用用户原始问题关键词检索，不要生构或限定领域。
 
     参数说明：
-    - query (str): 查询主题。
-    - max_results (int): 期望返回条数，默认 3。
+    - query (str): 查询关键词，应直接来自用户问题。
+    - max_results (int): 期望返回条数，默认 5。
     """
     if not query or not query.strip():
-        return "请提供有效的案例检索关键词。"
+        return "请提供有效的检索关键词。"
 
     top_k = max(1, min(max_results, 10))
+    enhanced_query = f"{query.strip()} 中国 法律"
 
     try:
-        search = DuckDuckGoSearchAPIWrapper()
-        enhanced_query = f"{query} 劳动争议 最新 判例 中国"
+        search = DuckDuckGoSearchAPIWrapper(max_results=top_k)
+        results = search.results(enhanced_query, max_results=top_k)
+        if results:
+            lines = []
+            for item in results:
+                title = item.get("title", "")
+                link = item.get("link", "")
+                snippet = item.get("snippet", "")
+                lines.append(f"标题：{title}\n链接：{link}\n摘要：{snippet}")
+            return "\n\n".join(lines)
+
+        # fallback: run()
         result_text = search.run(enhanced_query)
         if result_text and result_text.strip():
-            return f"联网检索结果（前 {top_k} 条线索）：\n{result_text}"
+            return result_text
     except Exception as e:
-        app_logger.warning(f"search_latest_legal_cases fallback to mock: {str(e)}")
+        app_logger.warning(f"search_latest_legal_cases error: {str(e)}")
 
-    mock_cases: list[dict[str, Any]] = [
-        {
-            "title": "某地高院：违法解除劳动合同，支持 2N 赔偿",
-            "summary": "法院认为用人单位未履行法定程序且证据不足，判令支付违法解除赔偿金。",
-        },
-        {
-            "title": "某中院：绩效不达标解除争议，N+1 适用边界",
-            "summary": "判决指出需证明调岗培训与考核过程合法，程序瑕疵将影响解除合法性。",
-        },
-        {
-            "title": "某仲裁委：未签书面劳动合同的双倍工资争议",
-            "summary": "确认建立劳动关系后未签合同的期间，单位应依法承担双倍工资责任。",
-        },
-    ]
-
-    selected = mock_cases[:top_k]
-    lines = ["联网不可用，以下为模拟案例线索："]
-    for idx, item in enumerate(selected, start=1):
-        lines.append(f"{idx}. {item['title']} - {item['summary']}")
-    return "\n".join(lines)
+    return (
+        f"联网检索暂时不可用，建议在裁判文书网（wenshu.court.gov.cn）或北大法宝检索「{query}」相关内容。"
+    )
 
 
 def get_tools(enable_search: bool = True, enable_calculator: bool = True) -> list:

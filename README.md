@@ -221,6 +221,24 @@ cp .env.example .env
 
 ```bash
 docker compose up -d --build
+# 日常启动
+docker compose up -d
+# 查看状态
+docker compose ps
+# 查看日志
+docker compose logs -f
+# 停止
+docker compose down
+```
+
+#### Docker 拉取异常的稳定方案（推荐）
+
+如果偶发 `content size of zero` 这类拉取错误，建议固定镜像版本并先手动拉取一次：
+
+```bash
+docker pull redis:7.4.2-alpine
+docker pull node:20.18.3-bookworm-slim
+docker compose up -d --build
 ```
 
 首次构建约需 3–8 分钟（视网速），之后重启只需数秒。
@@ -232,23 +250,6 @@ docker compose up -d --build
 | 🌐 前端界面 | http://localhost:3000 |
 | ⚙️ 后端 API | http://localhost:8000 |
 | 📖 API 文档 | http://localhost:8000/docs |
-
-#### 常用命令
-
-```bash
-# 查看实时日志
-docker compose logs -f
-
-# 仅查看某个服务
-docker compose logs -f backend
-docker compose logs -f frontend
-
-# 停止服务
-docker compose down
-
-# 停止并清除数据卷（完全重置）
-docker compose down -v
-```
 
 ---
 
