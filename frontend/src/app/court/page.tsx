@@ -996,8 +996,10 @@ export default function CourtPage() {
   const [lawRefs, setLawRefs] = useState<LawRefItem[]>([]);
   const [activeEvidenceId, setActiveEvidenceId] = useState<string | null>(null);
   const [activeLawId, setActiveLawId] = useState<string | null>(null);
+  const [courtThreadId, setCourtThreadId] = useState<string | null>(null);
   const visibleCaseExamples = CASE_EXAMPLES.slice(templatePage * 4, templatePage * 4 + 4);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const courtSessionIdRef = useRef(`court_${Date.now()}`);
 
   const addEv = useCallback((side: 'plaintiff' | 'defendant') => {
     setEvidence(prev => {
@@ -1034,6 +1036,7 @@ export default function CourtPage() {
     setLawRefs([]);
     setActiveEvidenceId(null);
     setActiveLawId(null);
+    setCourtThreadId(null);
 
     // 本地实时评分引擎
     const computeScores = (acc: typeof scoreAccRef.current) => {
@@ -1057,6 +1060,8 @@ export default function CourtPage() {
         {
           case_description: caseDesc,
           strategy,
+          thread_id: courtThreadId || undefined,
+          session_id: courtSessionIdRef.current,
           human_evidence: humanEvidence
         },
         (event: AnyCourtEvent) => {
@@ -1072,7 +1077,11 @@ export default function CourtPage() {
                   : 'system';
           };
 
-          if (event.type === 'new_message') {
+          if (event.type === 'thread') {
+            if (event.thread_id) {
+              setCourtThreadId(event.thread_id);
+            }
+          } else if (event.type === 'new_message') {
             const mappedRole = mapRole(event);
             const msgId = 'msg_id' in event ? event.msg_id : undefined;
             // 每条新消息更新消息计数和阶段
@@ -1188,17 +1197,143 @@ export default function CourtPage() {
     } finally {
       setIsStreaming(false);
     }
-  }, [caseDesc, userRole, evidence, aiPersonas]);
+  }, [caseDesc, userRole, evidence, aiPersonas, courtThreadId]);
 
-  const handleSpeak = useCallback(() => {
-    if (!inputText.trim()) return;
-    setChatHistory(prev => [...prev, {
-      role: 'user',
-      name: userRole === 'plaintiff' ? '原告代理人' : '被告代理人',
-      content: inputText
-    }]);
+  const handleSpeak = useCallback(async () => {
+    const speech = inputText.trim();
+    if (!speech || isStreaming) return;
+
+    const speakerName = userRole === 'plaintiff' ? '原告代理人' : '被告代理人';
+    setChatHistory(prev => [...prev, { role: 'user', name: speakerName, content: speech }]);
     setInputText('');
-  }, [inputText, userRole]);
+    setIsStreaming(true);
+
+    try {
+      const followupCase = `${caseDesc}\n\n[用户补充陈述]\n角色：${speakerName}\n内容：${speech}`;
+      const strategy = userRole === 'plaintiff' ? `原告代理人（${aiPersonas.plaintiff}）` : `被告代理人（${aiPersonas.defendant}）`;
+
+      await streamCourtDebate(
+        {
+          case_description: followupCase,
+          strategy,
+          thread_id: courtThreadId || undefined,
+          session_id: courtSessionIdRef.current,
+        },
+        (event: AnyCourtEvent) => {
+          const mapRole = (ev: AnyCourtEvent): ChatMsg['role'] => {
+            const roleKey = 'role_key' in ev ? ev.role_key : undefined;
+            const role = ev.role;
+            return roleKey === 'judge' || role === 'judge'
+              ? 'judge'
+              : roleKey === 'plaintiff' || role === 'plaintiff'
+                ? 'plaintiff'
+                : roleKey === 'defendant' || role === 'defendant'
+                  ? 'defendant'
+                  : 'system';
+          };
+
+          if (event.type === 'thread') {
+            if (event.thread_id) setCourtThreadId(event.thread_id);
+            return;
+          }
+
+          if (event.type === 'new_message') {
+            const mappedRole = mapRole(event);
+            const msgId = 'msg_id' in event ? event.msg_id : undefined;
+            setChatHistory(prev => [
+              ...prev,
+              {
+                msgId: msgId || `msg_${Date.now()}_${prev.length}`,
+                role: mappedRole,
+                name: event.role || '系统',
+                content: '',
+              },
+            ]);
+            return;
+          }
+
+          if (event.type === 'chunk') {
+            const chunkText = event.content || '';
+            if (!chunkText) return;
+            setChatHistory(prev => {
+              const msgId = 'msg_id' in event ? event.msg_id : undefined;
+              const next = [...prev];
+              if (msgId) {
+                for (let i = next.length - 1; i >= 0; i -= 1) {
+                  if (next[i].msgId === msgId) {
+                    next[i] = { ...next[i], content: (next[i].content || '') + chunkText };
+                    return next;
+                  }
+                }
+              }
+
+              const mappedRole = mapRole(event);
+              if (next.length > 0 && next[next.length - 1].role === mappedRole) {
+                const last = next[next.length - 1];
+                next[next.length - 1] = { ...last, content: (last.content || '') + chunkText };
+                return next;
+              }
+
+              next.push({
+                msgId: msgId || `msg_${Date.now()}_${next.length}`,
+                role: mappedRole,
+                name: event.role || '系统',
+                content: chunkText,
+              });
+              return next;
+            });
+            return;
+          }
+
+          if (event.type === 'evidence_list' && Array.isArray(event.evidence_list)) {
+            setEvidenceRefs(event.evidence_list);
+            return;
+          }
+
+          if (event.type === 'law_list' && Array.isArray(event.law_list)) {
+            setLawRefs(event.law_list);
+            return;
+          }
+
+          if (event.type === 'evidence_reference' && event.evidence_id) {
+            setActiveEvidenceId(event.evidence_id);
+            return;
+          }
+
+          if (event.type === 'law_reference' && event.law_id) {
+            setActiveLawId(event.law_id);
+            return;
+          }
+
+          if (event.type === 'result' && event.result?.verdict) {
+            setChatHistory(prev => [...prev, {
+              msgId: `msg_${Date.now()}_${prev.length}`,
+              role: 'judge',
+              name: '审判长',
+              content: toPlainDisplayText(event.result?.verdict || ''),
+            }]);
+            return;
+          }
+
+          if (event.type === 'error') {
+            setChatHistory(prev => [...prev, {
+              role: 'system',
+              name: '系统',
+              content: event.message || '庭审推演中断，请稍后重试。',
+            }]);
+          }
+        }
+      );
+    } catch (err) {
+      setChatHistory(prev => [...prev, {
+        role: 'system',
+        name: '系统',
+        content: `错误: ${err instanceof Error ? err.message : '未知错误'}`
+      }]);
+    } finally {
+      setIsStreaming(false);
+    }
+  }, [inputText, userRole, isStreaming, caseDesc, aiPersonas, courtThreadId]);
 
   const handleShuffleCaseExamples = useCallback(() => {
     setTemplatePage(p => (p + 1) % Math.ceil(CASE_EXAMPLES.length / 4));

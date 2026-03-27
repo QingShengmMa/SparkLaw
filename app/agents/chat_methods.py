@@ -3,8 +3,9 @@
 """
 
 from __future__ import annotations
+import json
 import re
-from typing import Dict, List, Optional, Any, AsyncIterator
+from typing import Dict, List, Optional, Any, AsyncIterator, Tuple
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from app.agents.legal_agent import (
     LegalAgentService,
@@ -17,6 +18,8 @@ from app.agents.legal_agent import (
 from app.llm.factory import LLMFactory
 from app.core.memory_manager import memory_manager
 from app.core.logger import app_logger
+from app.guardrails.hallucination_guard import HallucinationGuard, GuardrailViolationError
+from app.guardrails.output_validator import OutputValidator
 
 
 def _build_messages(
@@ -114,6 +117,61 @@ def _extract_search_items_from_output(output: Any) -> List[Dict[str, str]]:
     return items
 
 
+def _parse_law_list_from_legal_context(legal_context: str) -> List[Dict[str, str]]:
+    """从 legal_context 文本中解析 law_x 引用 ID，供 guardrail 校验使用。"""
+    if not legal_context:
+        return []
+
+    law_ids = re.findall(r"\[(\d+)\]", legal_context)
+    # legal_context 当前格式为 [1] xxx，[2] xxx，映射到 law_1/law_2
+    return [{"id": f"law_{idx}"} for idx in law_ids]
+
+
+def _split_think_fragments(buffer: str, in_thinking: bool) -> Tuple[List[Tuple[str, str]], str, bool]:
+    """Split stream text into normal/thinking fragments with boundary-safe buffer.
+
+    Returns: (segments[(kind,text)], remained_buffer, new_in_thinking)
+    """
+    segments: List[Tuple[str, str]] = []
+    i = 0
+    n = len(buffer)
+
+    while i < n:
+        if in_thinking:
+            close_idx = buffer.find("</think>", i)
+            if close_idx == -1:
+                tail = buffer[i:]
+                # keep possible truncated close tag in remainder
+                keep = min(len("</think>") - 1, len(tail))
+                split_at = len(tail) - keep
+                if split_at > 0:
+                    segments.append(("thinking", tail[:split_at]))
+                return segments, tail[split_at:], True
+
+            chunk = buffer[i:close_idx]
+            if chunk:
+                segments.append(("thinking", chunk))
+            i = close_idx + len("</think>")
+            in_thinking = False
+            continue
+
+        open_idx = buffer.find("<think>", i)
+        if open_idx == -1:
+            tail = buffer[i:]
+            keep = min(len("<think>") - 1, len(tail))
+            split_at = len(tail) - keep
+            if split_at > 0:
+                segments.append(("text", tail[:split_at]))
+            return segments, tail[split_at:], False
+
+        if open_idx > i:
+            segments.append(("text", buffer[i:open_idx]))
+        i = open_idx + len("<think>")
+        in_thinking = True
+
+    return segments, "", in_thinking
+
+
 async def run_react_event_stream(
     self: LegalAgentService,
     messages: List[Any],
@@ -121,12 +179,14 @@ async def run_react_event_stream(
     thread_id: Optional[str] = None,
     enable_deep_think: bool = False,
     enable_web_search: bool = False,
+    legal_context: str = "",
 ) -> AsyncIterator[Dict[str, Any]]:
     graph = graph_to_use or self.graph
     initial_state: LegalAgentGraphState = {"messages": messages}
     final_chunks: List[str] = []
     think_chunks: List[str] = []
     in_thinking = False
+    think_buffer = ""
     config = {"configurable": {"thread_id": thread_id}} if thread_id else None
 
     if enable_deep_think:
@@ -148,16 +208,24 @@ async def run_react_event_stream(
             if reasoning and enable_deep_think:
                 in_thinking = True
                 think_chunks.append(reasoning)
-                yield {"type": "thinking_chunk", "content": reasoning}
+                yield {"type": "thinking", "content": reasoning}
                 continue
+
             text = self._extract_text_from_chunk(chunk)
             if not text:
                 continue
-            if in_thinking:
-                in_thinking = False
-                yield {"type": "thinking_end", "thinking": "".join(think_chunks)}
-            final_chunks.append(text)
-            yield {"type": "text_chunk", "content": text}
+
+            think_buffer += text
+            segments, think_buffer, in_thinking = _split_think_fragments(think_buffer, in_thinking)
+            for kind, content in segments:
+                if not content:
+                    continue
+                if kind == "thinking":
+                    think_chunks.append(content)
+                    yield {"type": "thinking", "content": content}
+                else:
+                    final_chunks.append(content)
+                    yield {"type": "text", "content": content}
 
         elif event_type == "on_tool_start":
             tool_name = evt.get("name") or evt.get("data", {}).get("name") or "unknown_tool"
@@ -188,10 +256,63 @@ async def run_react_event_stream(
             else:
                 yield {"type": "tool_end", "tool_name": tool_name}
 
+    if think_buffer:
+        tail_segments, think_buffer, in_thinking = _split_think_fragments(think_buffer, in_thinking)
+        for kind, content in tail_segments:
+            if not content:
+                continue
+            if kind == "thinking":
+                think_chunks.append(content)
+                yield {"type": "thinking", "content": content}
+            else:
+                final_chunks.append(content)
+                yield {"type": "text", "content": content}
+
+        if think_buffer:
+            # 仍残留截断标签或未闭合 think 内容，按当前状态并入可见文本以避免丢字
+            if in_thinking:
+                think_chunks.append(think_buffer)
+                yield {"type": "thinking", "content": think_buffer}
+            else:
+                final_chunks.append(think_buffer)
+                yield {"type": "text", "content": think_buffer}
+            think_buffer = ""
+
     if in_thinking or (enable_deep_think and think_chunks):
         yield {"type": "thinking_end", "thinking": "".join(think_chunks)}
 
-    yield {"type": "final", "answer": "".join(final_chunks)}
+    final_answer = "".join(final_chunks)
+    guard = HallucinationGuard()
+    validator = OutputValidator()
+
+    try:
+        retrieved_law_list = _parse_law_list_from_legal_context(legal_context)
+        guard_result = guard.check_hallucination(
+            generated_text=final_answer,
+            retrieved_law_list=retrieved_law_list,
+            raise_on_violation=True,
+        )
+        _ = guard_result
+
+        if "[法条:" in final_answer:
+            normalized = {
+                "plaintiff_win_rate": 50,
+                "defendant_win_rate": 50,
+                "verdict_text": final_answer,
+            }
+            if not validator.validate_verdict(normalized):
+                raise GuardrailViolationError("输出结构化校验未通过", violations=["OUTPUT_VALIDATION_FAILED"])
+    except GuardrailViolationError as e:
+        app_logger.warning(f"⚠️ Guardrail 拦截（降级继续）: {str(e)}")
+        final_answer += "\n\n> ⚠️ **系统提示**：以上部分法条引用未能与本地知识库完全匹配，请审慎参考。"
+    except Exception as e:
+        app_logger.warning(f"⚠️ Guardrail 校验异常（降级继续）: {str(e)}")
+        final_answer += "\n\n> ⚠️ **系统提示**：以上内容暂未完成完整合规校验，请审慎参考。"
+
+    if not final_answer.strip():
+        raise RuntimeError("GUARDRAIL_BLOCKED: 无法生成有效合规回复")
+
+    yield {"type": "final", "answer": final_answer}
 
 
 async def run_react_stream(

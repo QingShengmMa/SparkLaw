@@ -38,6 +38,7 @@ class CourtDebateRequest(BaseModel):
     defendant_name: Optional[str] = Field(default="被告", description="被告名称")
     strategy: Optional[str] = Field(default="aggressive", description="辩论策略")
     human_evidence: Optional[list] = Field(default=None, description="人工证据列表")
+    session_id: Optional[str] = Field(default=None, description="会话ID（前端透传）")
 
 
 class CourtRejudgeRequest(CourtDebateRequest):
@@ -330,7 +331,7 @@ async def debate(request: DebateRequest):
     from app.services.supervisor_agent import get_supervisor_agent
     try:
         agent = get_supervisor_agent()
-        result = await agent.run(request.case_description)
+        result = await agent.execute(request.case_description)
         return result
     except Exception as e:
         app_logger.error(f"辩论失败: {e}")
@@ -362,6 +363,7 @@ async def court_debate(
 
 
                 strategy=request.strategy or "aggressive",
+                thread_id=request.thread_id,
                 human_evidences=merged_evidence,
 
             ):

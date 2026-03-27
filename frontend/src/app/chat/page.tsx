@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Download, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { getApiBaseUrl } from '@/lib/api';
+import { getApiBaseUrl, parseSSEFrames } from '@/lib/api';
 import { useChatStore, generateSmartSessionTitle } from '@/store/chatStore';
 import html2canvas from 'html2canvas';
 import ScaleIcon from '@/components/ScaleIcon';
@@ -19,7 +19,7 @@ const QUICK_PROMPTS = [
 interface ToolCall {
   name: string;
   input: any;
-  status: 'running' | 'success';
+  status: 'running' | 'success' | 'failed' | 'interrupted';
 }
 
 interface SearchResultItem {
@@ -61,6 +61,8 @@ interface ChatSseEvent {
   urls?: string[];
   items?: SearchResultItem[];
   snippet?: string;
+  error_code?: string;
+  error_message?: string;
 }
 
 export default function ChatPage() {
@@ -274,18 +276,22 @@ export default function ChatPage() {
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
 
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
+        const { frames, rest } = parseSSEFrames(buffer);
+        buffer = rest;
 
-        for (const line of lines) {
-          if (line === 'data: [DONE]') break;
-          if (!line.startsWith('data: ')) continue;
+        for (const frame of frames) {
+          if (!frame.data || frame.data === '[DONE]') continue;
+
           let data: ChatSseEvent;
-          try { data = JSON.parse(line.slice(6)) as ChatSseEvent; } catch { continue; }
+          try {
+            data = JSON.parse(frame.data) as ChatSseEvent;
+          } catch {
+            continue;
+          }
 
-          const evType: string = data.event || data.type || '';
+          const evType: string = data.event || frame.event || data.type || '';
 
-          if (evType === 'text_chunk') {
+          if (evType === 'text_chunk' || evType === 'text') {
             const chunk = data.content || '';
             if (!chunk) continue;
             finalAnswer += chunk;
@@ -307,7 +313,7 @@ export default function ChatPage() {
                 thinking_status: 'thinking' as const,
               }))
             );
-          } else if (evType === 'thinking_chunk') {
+          } else if (evType === 'thinking_chunk' || evType === 'thinking') {
             const chunk = data.content || '';
             setLocalMessages((prev) =>
               updateStreamingAssistant(prev, (current) => ({
@@ -352,7 +358,7 @@ export default function ChatPage() {
                 return { ...current, statusText: undefined, search_results: results };
               })
             );
-          } else if (evType === 'tool_start') {
+          } else if (evType === 'tool_start' || evType === 'tool_call') {
             const toolName = data.tool_name || 'unknown_tool';
             const toolInput = data.input ?? {};
             setLocalMessages((prev) =>
@@ -367,37 +373,7 @@ export default function ChatPage() {
                 ],
               }))
             );
-          } else if (evType === 'tool_end') {
-            const toolName = data.tool_name || 'unknown_tool';
-            setLocalMessages((prev) =>
-              updateStreamingAssistant(prev, (current) => ({
-                ...current,
-                role: 'assistant',
-                content: current.content || '',
-                statusText: undefined,
-                tool_calls: (current.tool_calls || []).map((tc) =>
-                  tc.name === toolName && tc.status === 'running'
-                    ? { ...tc, status: 'success' as const }
-                    : tc
-                ),
-              }))
-            );
-          } else if (evType === 'tool_call') {
-            const toolName = data.tool_name || 'unknown_tool';
-            const toolInput = data.input ?? {};
-            setLocalMessages((prev) =>
-              updateStreamingAssistant(prev, (current) => ({
-                ...current,
-                role: 'assistant',
-                content: current.content || '',
-                statusText: `正在调用 ${toolName}...`,
-                tool_calls: [
-                  ...(current.tool_calls || []),
-                  { name: toolName, input: toolInput, status: 'running' as const },
-                ],
-              }))
-            );
-          } else if (evType === 'tool_result') {
+          } else if (evType === 'tool_end' || evType === 'tool_result') {
             const toolName = data.tool_name || 'unknown_tool';
             setLocalMessages((prev) =>
               updateStreamingAssistant(prev, (current) => ({
@@ -421,20 +397,24 @@ export default function ChatPage() {
                 content: finalAnswer,
                 statusText: undefined,
                 tool_calls: current.tool_calls || [],
+                thinking_status: current.thinking ? 'done' : current.thinking_status,
               }))
             );
           } else if (evType === 'error' || data.role === 'error') {
             isError = true;
-            errorContent = data.content || data.message || '未知错误';
+            const blocked = data.error_code === 'GUARDRAIL_BLOCKED';
+            errorContent = blocked
+              ? (data.message || '生成因合规拦截或网络问题终止')
+              : (data.content || data.message || '生成因合规拦截或网络问题终止');
             setLocalMessages((prev) =>
               updateStreamingAssistant(prev, (current) => ({
                 ...current,
                 role: 'assistant',
                 content: errorContent,
                 isError: true,
-                statusText: undefined,
+                statusText: blocked ? '合规拦截' : '生成中断',
                 tool_calls: (current.tool_calls || []).map((tc) =>
-                  tc.status === 'running' ? { ...tc, status: 'success' as const } : tc
+                  tc.status === 'running' ? { ...tc, status: 'interrupted' as const } : tc
                 ),
               }))
             );
@@ -460,11 +440,11 @@ export default function ChatPage() {
         updateStreamingAssistant(prev, (current) => ({
           ...current,
           role: 'assistant',
-          content: '抱歉，当前服务暂时不可用，请稍后重试。',
+          content: '生成因合规拦截或网络问题终止。请调整问题后重试。',
           isError: true,
-          statusText: undefined,
+          statusText: '生成中断',
           tool_calls: (current.tool_calls || []).map((tc) =>
-            tc.status === 'running' ? { ...tc, status: 'success' as const } : tc
+            tc.status === 'running' ? { ...tc, status: 'interrupted' as const } : tc
           ),
         }))
       );
@@ -645,14 +625,18 @@ export default function ChatPage() {
                             className="mb-3 rounded-lg border border-slate-200 bg-slate-50/90 dark:border-slate-800 dark:bg-slate-900/40"
                             open={message.thinking_status === 'thinking'}
                           >
-                            <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2 text-[11px] font-medium tracking-wide text-slate-600 dark:text-slate-300">
-                              <span className={message.thinking_status === 'thinking' ? 'animate-spin' : ''}>🧠</span>
-                              {message.thinking_status === 'thinking' ? '思考中（内部推理）' : '查看思考过程（内部推理）'}
+                            <summary className="flex cursor-pointer select-none items-center justify-between gap-2 px-3 py-2 text-[11px] font-medium tracking-wide text-slate-600 dark:text-slate-300">
+                              <span className="inline-flex items-center gap-2">
+                                <span className={message.thinking_status === 'thinking' ? 'animate-spin' : ''}>🧠</span>
+                                {message.thinking_status === 'thinking' ? 'Thinking（实时推理）' : 'Thinking（点击展开）'}
+                              </span>
+                              <span className="text-[10px] text-slate-400">{message.thinking_status === 'thinking' ? 'streaming' : 'done'}</span>
                             </summary>
                             <div className="max-h-52 overflow-y-auto border-t border-slate-200/80 px-3 py-2 dark:border-slate-700/80">
-                              <pre className="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+                              <p className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-slate-500 dark:text-slate-300">
                                 {message.thinking}
-                              </pre>
+                                {message.thinking_status === 'thinking' && <span className="ml-0.5 inline-block h-3 w-0.5 animate-pulse bg-slate-400 align-middle" />}
+                              </p>
                             </div>
                           </details>
                         )}
@@ -721,6 +705,10 @@ export default function ChatPage() {
                                         <span className="inline-block h-3 w-3 animate-spin rounded-full border border-gray-400 border-t-transparent" />
                                         <span className="text-gray-500">⚙️ 正在调用 [{tool.name}]...</span>
                                       </>
+                                    ) : tool.status === 'interrupted' ? (
+                                      <span className="text-amber-600">⚠️ 中断 [{tool.name}]</span>
+                                    ) : tool.status === 'failed' ? (
+                                      <span className="text-red-600">❌ 失败 [{tool.name}]</span>
                                     ) : (
                                       <span className="text-green-600">✅ 完成 [{tool.name}]</span>
                                     )}

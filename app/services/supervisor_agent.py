@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from operator import add
-from typing import Annotated, Any, Dict, List, Literal, TypedDict
+from typing import Annotated, Any, AsyncIterator, Dict, List, Literal, Optional, TypedDict
 import json
 import re
 import uuid
@@ -178,9 +178,7 @@ class SupervisorDebateAgent:
         return workflow.compile(checkpointer=self.checkpointer)
 
     def _route_by_supervisor(self, state: SupervisorState) -> str:
-        return state.get("next_worker", "END")
-
-    def _route_by_supervisor(self, state: SupervisorState) -> str:
+        """Return next worker selected by supervisor node."""
         return state.get("next_worker", "END")
 
     def _route_by_verification(self, state: SupervisorState) -> str:
@@ -221,22 +219,7 @@ class SupervisorDebateAgent:
         return points or [fallback]
 
     def _normalize_verdict_result(self, verdict_result: VerdictResult) -> VerdictResult:
-        plaintiff = max(0, min(100, int(verdict_result.plaintiff_win_rate)))
-        defendant = max(0, min(100, int(verdict_result.defendant_win_rate)))
-        if plaintiff + defendant != 100:
-            defendant = 100 - plaintiff
-
-        verdict_text = (verdict_result.verdict_text or "").strip()
-        if not verdict_text:
-            verdict_text = "# 法官综合意见\n\n本院将基于现有证据与法条进行裁判评议。"
-
-        return VerdictResult(
-            plaintiff_win_rate=plaintiff,
-            defendant_win_rate=defendant,
-            verdict_text=verdict_text,
-        )
-
-    def _normalize_verdict_result(self, verdict_result: VerdictResult) -> VerdictResult:
+        """Normalize verdict probabilities and fallback text."""
         plaintiff = max(0, min(100, int(verdict_result.plaintiff_win_rate)))
         defendant = max(0, min(100, int(verdict_result.defendant_win_rate)))
         if plaintiff + defendant != 100:
@@ -771,7 +754,26 @@ class SupervisorDebateAgent:
             "messages": [{"role": "LitigationStrategist", "content": content}],
         }
 
+    async def execute(self, case_description: str, strategy: str = "aggressive") -> DebateResponse:
+        """Unified non-stream execution entry for supervisor debate."""
+        return await self.simulate_debate(case_description=case_description, strategy=strategy)
+
+    async def execute_stream(
+        self,
+        case_description: str,
+        strategy: str = "aggressive",
+        custom_config: Optional[Dict[str, Any]] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Unified streaming execution entry for supervisor debate."""
+        async for payload in self.simulate_debate_stream(
+            case_description=case_description,
+            strategy=strategy,
+            custom_config=custom_config,
+        ):
+            yield payload
+
     async def simulate_debate(self, case_description: str, strategy: str = "aggressive") -> DebateResponse:
+        """Run full debate and return final structured response."""
         if not case_description or len(case_description.strip()) < 20:
             raise ValueError("案情描述过短或为空，请提供详细案情")
 
@@ -961,7 +963,13 @@ class SupervisorDebateAgent:
         final_result = await self._collect_final_result(config)
         yield {"type": "result", "result": final_result}
 
-    async def simulate_debate_stream(self, case_description: str, strategy: str = "aggressive", custom_config: Dict = None):
+    async def simulate_debate_stream(
+        self,
+        case_description: str,
+        strategy: str = "aggressive",
+        custom_config: Optional[Dict[str, Any]] = None,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Run debate in streaming mode and yield SSE-friendly payloads."""
         if not case_description or len(case_description.strip()) < 20:
             raise ValueError("案情描述过短或为空")
 

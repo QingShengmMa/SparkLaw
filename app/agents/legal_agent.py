@@ -181,9 +181,45 @@ class LegalAgentService:
         return "tools" if bool(getattr(state["messages"][-1], "tool_calls", None)) else "end"
 
     async def _safe_tools_node(self, state: LegalAgentGraphState) -> Dict[str, Any]:
+        started = asyncio.get_running_loop().time()
+        tool_calls = getattr(state["messages"][-1], "tool_calls", []) or []
+
+        for tc in tool_calls:
+            app_logger.info(
+                f"[TOOL_AUDIT] tool_name={tc.get('name', 'unknown')} arguments={tc.get('args', {})} status=start"
+            )
+
         try:
-            return await self.tool_node.ainvoke(state)
+            result = await self.tool_node.ainvoke(state)
+            latency = int((asyncio.get_running_loop().time() - started) * 1000)
+            for tc in tool_calls:
+                app_logger.info(
+                    f"[TOOL_AUDIT] tool_name={tc.get('name', 'unknown')} arguments={tc.get('args', {})} latency={latency}ms status=success"
+                )
+            return result
         except Exception as e:
-            app_logger.warning(f"工具执行失败: {str(e)}")
-            tool_calls = getattr(state["messages"][-1], "tool_calls", []) or []
-            return {"messages": [ToolMessage(content=f"工具执行失败: {str(e)}", tool_call_id=tc.get("id", "tool_error")) for tc in tool_calls]}
+            latency = int((asyncio.get_running_loop().time() - started) * 1000)
+            err_text = str(e)
+            app_logger.warning(f"工具执行失败: {err_text}")
+            for tc in tool_calls:
+                app_logger.warning(
+                    f"[TOOL_AUDIT] tool_name={tc.get('name', 'unknown')} arguments={tc.get('args', {})} latency={latency}ms status=failed"
+                )
+
+            fallback_messages = []
+            for tc in tool_calls:
+                fallback_messages.append(
+                    ToolMessage(
+                        content=f"Observation: 工具执行失败（{err_text}），请尝试使用其他方法或基于已有知识回答。",
+                        tool_call_id=tc.get("id", "tool_error"),
+                    )
+                )
+
+            if not fallback_messages:
+                fallback_messages = [
+                    ToolMessage(
+                        content="Observation: 工具执行失败（未知错误），请尝试使用其他方法或基于已有知识回答。",
+                        tool_call_id="tool_error",
+                    )
+                ]
+            return {"messages": fallback_messages}

@@ -56,7 +56,7 @@ class ChatResponse(BaseModel):
 class ResetResponse(BaseModel):
     """重置会话响应模型"""
     success: bool = Field(..., description="是否成功")
-    message: str = Field(..., description="消息")
+    message: Optional[str] = Field(default=None, description="消息")
     session_id: str = Field(..., description="会话ID")
     
     model_config = {

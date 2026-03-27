@@ -21,6 +21,7 @@ from app.core.logger import app_logger
 from app.core.config import settings
 from app.services.llm_factory import LLMFactory
 from app.services.rag_service import get_rag_service
+from app.guardrails.hallucination_guard import HallucinationGuard
 
 
 def _text_fingerprint(text: str) -> str:
@@ -103,6 +104,7 @@ class CourtDebateAgent:
     def __init__(self) -> None:
         self.llm = LLMFactory.create_llm()
         self.rag = get_rag_service()
+        self.hallucination_guard = HallucinationGuard()
         self.checkpointer = self._create_checkpointer()
         self.graph = self._build_graph()
         app_logger.info("⚖️  CourtDebateAgent 初始化完成")
@@ -280,6 +282,19 @@ class CourtDebateAgent:
     def _extract_law_ids(self, text: str) -> List[str]:
         ids = re.findall(r"\[法条:(law_\d+)\]", text or "")
         return list(dict.fromkeys(ids))
+
+    def _apply_guardrail_warning(self, content: str, law_list: List[Dict[str, str]]) -> str:
+        """Append warning when cited law ids are outside retrieved law list."""
+        check = self.hallucination_guard.check_hallucination(
+            generated_text=content,
+            retrieved_law_list=law_list or [],
+            raise_on_violation=False,
+        )
+        if check.passed:
+            return content
+
+        app_logger.warning(f"⚠️ Court guardrail warning, invalid laws: {check.violations}")
+        return content + "\n\n> ⚠️ **合规提示**：本段存在未在本地法条列表命中的引用，请审慎参考。"
 
     def _dedup_evidence_list(self, evidence_list: List[Dict[str, str]]) -> List[Dict[str, str]]:
         deduped: List[Dict[str, str]] = []
@@ -741,13 +756,23 @@ class CourtDebateAgent:
         )
         verdict_result = await self._call_structured_verdict(structured_system, structured_human, fallback_text)
 
+        original_verdict_text = verdict_result.verdict_text
+        guarded_verdict_text = self._apply_guardrail_warning(original_verdict_text, law_list)
+        risk_warning = None
+        if guarded_verdict_text != original_verdict_text:
+            risk_warning = "LAW_CITATION_UNVERIFIED"
+            verdict_result = verdict_result.model_copy(update={"verdict_text": guarded_verdict_text})
+
         verdict_payload = verdict_result.model_dump()
+        if risk_warning:
+            verdict_payload["risk_warning"] = risk_warning
+
         verdict_json = json.dumps(verdict_payload, ensure_ascii=False)
         msg = self._make_msg("msg_verdict", "法官", "judge", PHASE_VERDICT, verdict_json)
         return {
             "current_phase": PHASE_VERDICT,
             "verdict": verdict_result.verdict_text,
-            "verdict_result": verdict_result.model_dump(),
+            "verdict_result": verdict_payload,
             "transcript": [msg],
         }
 
@@ -978,6 +1003,9 @@ class CourtDebateAgent:
                 chunk = (event.get("data") or {}).get("chunk")
                 text = self._extract_chunk_text(chunk)
                 if text and role_info:
+                    state_snapshot = await self.graph.aget_state(config)
+                    current_laws = (state_snapshot.values or {}).get("law_list") or []
+                    guarded_text = self._apply_guardrail_warning(text, current_laws)
                     yield {
                         "type": "chunk",
                         "msg_id": active_msg_id_by_node.get(node_name),
@@ -985,15 +1013,15 @@ class CourtDebateAgent:
                         "role": role_info.get("role", ""),
                         "role_key": role_info.get("role_key", "judge"),
                         "phase": role_info.get("phase", ""),
-                        "content": text,
+                        "content": guarded_text,
                     }
-                    for eid in self._extract_evidence_ids(text):
+                    for eid in self._extract_evidence_ids(guarded_text):
                         yield {
                             "type": "evidence_reference",
                             "evidence_id": eid,
                             "role": role_info.get("role", ""),
                         }
-                    for lid in self._extract_law_ids(text):
+                    for lid in self._extract_law_ids(guarded_text):
                         yield {
                             "type": "law_reference",
                             "law_id": lid,

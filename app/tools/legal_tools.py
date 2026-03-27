@@ -6,9 +6,45 @@
 from __future__ import annotations
 
 import json
+import time
+from urllib.parse import urlparse
 from langchain_core.tools import tool
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 from app.core.logger import app_logger
+
+
+LEGAL_DOMAIN_WHITELIST = [
+    "gov.cn",
+    "court.gov.cn",
+    "npc.gov.cn",
+    "moj.gov.cn",
+    "csrc.gov.cn",
+    "cbirc.gov.cn",
+]
+
+
+def _is_preferred_legal_domain(url: str) -> bool:
+    if not url:
+        return False
+    host = (urlparse(url).hostname or "").lower()
+    return any(host == d or host.endswith(f".{d}") for d in LEGAL_DOMAIN_WHITELIST)
+
+
+def _format_search_results(results: list[dict], top_k: int) -> str:
+    preferred = [r for r in results if _is_preferred_legal_domain(r.get("link", ""))]
+    others = [r for r in results if not _is_preferred_legal_domain(r.get("link", ""))]
+    ranked = preferred + others
+
+    if not ranked:
+        return ""
+
+    lines = []
+    for idx, item in enumerate(ranked[:top_k], start=1):
+        title = (item.get("title") or "未命名来源").strip()
+        link = (item.get("link") or "").strip()
+        snippet = (item.get("snippet") or "暂无摘要").strip()
+        lines.append(f"[来源{idx}] {title} - {snippet} ({link})")
+    return "\n".join(lines)
 
 
 @tool
@@ -25,6 +61,10 @@ def calculate_labor_compensation(monthly_salary: float, working_years: float) ->
     返回：
     - JSON 字符串，包含 compensation_months、N、N_plus_1、double_N 以及说明字段。
     """
+    started = time.perf_counter()
+    args = {"monthly_salary": monthly_salary, "working_years": working_years}
+    app_logger.info(f"[TOOL_AUDIT] tool_name=calculate_labor_compensation arguments={args} status=start")
+    status = "success"
     try:
         if monthly_salary <= 0:
             return json.dumps({"error": "monthly_salary 必须大于 0"}, ensure_ascii=False)
@@ -61,8 +101,14 @@ def calculate_labor_compensation(monthly_salary: float, working_years: float) ->
             ensure_ascii=False,
         )
     except Exception as e:
+        status = "failed"
         app_logger.error(f"calculate_labor_compensation error: {str(e)}")
         return json.dumps({"error": f"计算失败: {str(e)}"}, ensure_ascii=False)
+    finally:
+        latency = int((time.perf_counter() - started) * 1000)
+        app_logger.info(
+            f"[TOOL_AUDIT] tool_name=calculate_labor_compensation arguments={args} latency={latency}ms status={status}"
+        )
 
 
 @tool
@@ -77,34 +123,61 @@ def search_latest_legal_cases(query: str, max_results: int = 5) -> str:
     - query (str): 查询关键词，应直接来自用户问题。
     - max_results (int): 期望返回条数，默认 5。
     """
-    if not query or not query.strip():
-        return "请提供有效的检索关键词。"
+    started = time.perf_counter()
+    args = {"query": query, "max_results": max_results}
+    app_logger.info(f"[TOOL_AUDIT] tool_name=search_latest_legal_cases arguments={args} status=start")
+    status = "success"
 
-    top_k = max(1, min(max_results, 10))
-    enhanced_query = f"{query.strip()} 中国 法律"
+    retries = 3
 
     try:
-        search = DuckDuckGoSearchAPIWrapper(max_results=top_k)
-        results = search.results(enhanced_query, max_results=top_k)
-        if results:
-            lines = []
-            for item in results:
-                title = item.get("title", "")
-                link = item.get("link", "")
-                snippet = item.get("snippet", "")
-                lines.append(f"标题：{title}\n链接：{link}\n摘要：{snippet}")
-            return "\n\n".join(lines)
+        if not query or not query.strip():
+            status = "failed"
+            return "请提供有效的检索关键词。"
+
+        top_k = max(1, min(max_results, 10))
+        enhanced_query = f"{query.strip()} 中国 法律 site:gov.cn OR site:court.gov.cn OR site:npc.gov.cn"
+        search = DuckDuckGoSearchAPIWrapper(max_results=top_k * 2)
+        last_error: Exception | None = None
+
+        for attempt in range(1, retries + 1):
+            try:
+                results = search.results(enhanced_query, max_results=top_k * 2)
+                if results:
+                    formatted = _format_search_results(results, top_k)
+                    if formatted:
+                        return formatted
+                break
+            except Exception as e:
+                last_error = e
+                app_logger.warning(
+                    f"search_latest_legal_cases attempt={attempt}/{retries} failed: {str(e)}"
+                )
+                if attempt < retries:
+                    time.sleep(0.4 * attempt)
 
         # fallback: run()
-        result_text = search.run(enhanced_query)
-        if result_text and result_text.strip():
-            return result_text
-    except Exception as e:
-        app_logger.warning(f"search_latest_legal_cases error: {str(e)}")
+        try:
+            result_text = search.run(enhanced_query)
+            if result_text and result_text.strip():
+                return f"[来源1] DuckDuckGo 摘要 - {result_text.strip()} (https://duckduckgo.com/)"
+        except Exception as fallback_err:
+            last_error = fallback_err
 
-    return (
-        f"联网检索暂时不可用，建议在裁判文书网（wenshu.court.gov.cn）或北大法宝检索「{query}」相关内容。"
-    )
+        if last_error:
+            raise last_error
+    except Exception as e:
+        status = "failed"
+        app_logger.warning(f"search_latest_legal_cases error: {str(e)}")
+        return (
+            f"联网检索暂时不可用（可能超时或连接受限）。"
+            f"建议优先在中国裁判文书网、最高法官网、国家法律法规数据库检索「{query}」。"
+        )
+    finally:
+        latency = int((time.perf_counter() - started) * 1000)
+        app_logger.info(
+            f"[TOOL_AUDIT] tool_name=search_latest_legal_cases arguments={args} latency={latency}ms status={status}"
+        )
 
 
 def get_tools(enable_search: bool = True, enable_calculator: bool = True) -> list:

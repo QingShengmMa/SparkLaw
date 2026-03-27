@@ -8,14 +8,14 @@ import re
 import uuid
 from difflib import SequenceMatcher
 from typing import List, Dict, Any, Optional
-import chromadb
-from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 from app.core.config import settings
 from app.core.logger import app_logger
 from app.services.legal_chunker import LegalChunker
 from app.knowledge.retrievers.query_rewriter import QueryRewriter
 from app.knowledge.rerankers.cross_encoder import Reranker
+from app.knowledge.stores.vector_store import VectorStoreAdapter
+from app.knowledge.stores.legal_corpus_repo import LegalCorpusRepo
 
 
 class RAGService:
@@ -31,17 +31,25 @@ class RAGService:
             app_logger.info(f"\U0001f504 \u6b63\u5728\u52a0\u8f7d Embedding \u6a21\u578b: {self.embedding_model_name}")
             self.embedding_model = SentenceTransformer(self.embedding_model_name)
             app_logger.info("\u2705 Embedding \u6a21\u578b\u52a0\u8f7d\u5b8c\u6210")
-            app_logger.info(f"\U0001f504 \u6b63\u5728\u521d\u59cb\u5316 ChromaDB\uff0c\u6301\u4e45\u5316\u76ee\u5f55: {self.persist_directory}")
-            self.chroma_client = chromadb.PersistentClient(
-                path=self.persist_directory,
-                settings=Settings(anonymized_telemetry=False, allow_reset=True),
+            app_logger.info(f"🔄 正在初始化 ChromaDB，持久化目录: {self.persist_directory}")
+
+            self.contract_store = VectorStoreAdapter(
+                persist_directory=self.persist_directory,
+                collection_name=self.COLLECTION_NAME,
+                metadata={"description": "法律合同文档向量库"},
+                embedding_function=self.embedding_model,
             )
-            self.collection = self.chroma_client.get_or_create_collection(
-                name=self.COLLECTION_NAME,
-                metadata={"description": "\u6cd5\u5f8b\u5408\u540c\u6587\u6863\u5411\u91cf\u5e93"},
+            self.collection = self.contract_store.collection
+
+            self.law_store = VectorStoreAdapter(
+                persist_directory=self.persist_directory,
+                collection_name=self.LAW_COLLECTION_NAME,
+                metadata={"description": "法律条文向量库"},
+                embedding_function=self.embedding_model,
             )
-            app_logger.info(f"\u2705 ChromaDB \u521d\u59cb\u5316\u5b8c\u6210\uff0c\u96c6\u5408: {self.COLLECTION_NAME}")
-            self._law_collection = None
+            self.legal_corpus_repo = LegalCorpusRepo(self.law_store)
+
+            app_logger.info(f"✅ ChromaDB 初始化完成，集合: {self.COLLECTION_NAME} / {self.LAW_COLLECTION_NAME}")
             self.chunker = LegalChunker()
             self.query_rewriter = QueryRewriter()
             self.reranker = Reranker()
@@ -101,7 +109,7 @@ class RAGService:
                 if lm.get("article"): m["article"] = lm["article"]
                 if metadata: m.update(metadata)
                 metadatas.append(m)
-            self.collection.add(ids=ids, embeddings=embeddings, documents=chunks, metadatas=metadatas)
+            self.contract_store.add_documents(ids=ids, documents=chunks, embeddings=embeddings, metadatas=metadatas)
             app_logger.info(f"\u2705 \u5408\u540c {contract_id} \u5165\u5e93\u5b8c\u6210\uff0c\u5171 {len(chunks)} \u4e2a\u7247\u6bb5")
             return {"contract_id": contract_id, "chunk_count": len(chunks), "status": "success"}
         except Exception as e:
@@ -120,7 +128,11 @@ class RAGService:
             rewritten_query = await self.query_rewriter.rewrite(query)
             query_embedding = self.embedding_model.encode([rewritten_query], show_progress_bar=False, convert_to_numpy=True).tolist()[0]
             where_filter = {"contract_id": contract_id} if contract_id else None
-            raw_results = self.collection.query(query_embeddings=[query_embedding], n_results=max(recall_top_k, top_k), where=where_filter)
+            raw_results = self.contract_store.search(
+                query_embedding=query_embedding,
+                n_results=max(recall_top_k, top_k),
+                where=where_filter,
+            )
             if raw_results and raw_results.get("documents") and raw_results["documents"][0]:
                 docs = raw_results["documents"][0]
                 metas = raw_results.get("metadatas", [[]])[0]
@@ -165,74 +177,80 @@ class RAGService:
     # ------------------------------------------------------------------
 
     def _get_law_collection(self):
-        if self._law_collection is None:
-            self._law_collection = self.chroma_client.get_or_create_collection(
-                name=self.LAW_COLLECTION_NAME,
-                metadata={"description": "\u6cd5\u5f8b\u6761\u6587\u5411\u91cf\u5e93"},
-            )
-        return self._law_collection
+        return self.law_store.collection
 
     def ingest_law(self, text: str, law_name: str, source: str = "", extra_metadata=None):
-        collection = self._get_law_collection()
         law_id = law_name.strip() or str(uuid.uuid4())
-        app_logger.info(f"\U0001f4e5 \u5f00\u59cb\u5165\u5e93\u6cd5\u5f8b\u6761\u6587: {law_id}")
+        app_logger.info(f"📥 开始入库法律条文: {law_id}")
         chunks = self.chunker.chunk_text(text)
         if not chunks:
             return {"law_name": law_id, "chunk_count": 0, "status": "empty"}
+
         embeddings = self.embedding_model.encode(chunks, show_progress_bar=False, convert_to_numpy=True).tolist()
         safe_id = re.sub(r"[^\w\-]", "_", law_id)
         ids = [f"law_{safe_id}_{i}" for i in range(len(chunks))]
+
         metadatas = []
         for i, chunk in enumerate(chunks):
-            m: Dict[str, Any] = {"law_name": law_id, "source": source or law_id, "chunk_index": i, "chunk_length": len(chunk), "doc_type": "law"}
+            m: Dict[str, Any] = {
+                "law_name": law_id,
+                "source": source or law_id,
+                "chunk_index": i,
+                "chunk_length": len(chunk),
+                "doc_type": "law",
+            }
             lm = self.chunker.get_chunk_metadata(chunk)
-            if lm.get("chapter"): m["chapter"] = lm["chapter"]
-            if lm.get("article"): m["article"] = lm["article"]
-            if extra_metadata: m.update(extra_metadata)
+            if lm.get("chapter"):
+                m["chapter"] = lm["chapter"]
+            if lm.get("article"):
+                m["article"] = lm["article"]
+            if extra_metadata:
+                m.update(extra_metadata)
             metadatas.append(m)
+
         try:
-            old = collection.get(where={"law_name": law_id})
-            if old and old["ids"]: collection.delete(ids=old["ids"])
+            self.legal_corpus_repo.delete_by_law_id(law_id)
         except Exception:
             pass
-        collection.add(ids=ids, embeddings=embeddings, documents=chunks, metadatas=metadatas)
-        app_logger.info(f"\u2705 \u6cd5\u5f8b\u6761\u6587 {law_id} \u5165\u5e93\u5b8c\u6210\uff0c\u5171 {len(chunks)} \u4e2a\u7247\u6bb5")
+
+        self.legal_corpus_repo.add_law_chunks(
+            ids=ids,
+            chunks=chunks,
+            metadatas=metadatas,
+            embeddings=embeddings,
+        )
+        app_logger.info(f"✅ 法律条文 {law_id} 入库完成，共 {len(chunks)} 个片段")
         return {"law_name": law_id, "chunk_count": len(chunks), "status": "success"}
 
     async def retrieve_law(self, query: str, top_k=5, recall_top_k=20, law_name=None):
         if not query or not query.strip():
             return []
-        collection = self._get_law_collection()
         try:
-            if collection.count() == 0:
+            if self.legal_corpus_repo.count() == 0:
                 return []
         except Exception:
             return []
+
         candidates: List[Dict[str, Any]] = []
         try:
             rewritten = await self.query_rewriter.rewrite(query)
             emb = self.embedding_model.encode([rewritten], show_progress_bar=False, convert_to_numpy=True).tolist()[0]
-            where = {"law_name": law_name} if law_name else None
-            raw = collection.query(query_embeddings=[emb], n_results=max(recall_top_k, top_k), where=where)
-            if raw and raw.get("documents") and raw["documents"][0]:
-                docs = raw["documents"][0]
-                metas = raw.get("metadatas", [[]])[0]
-                dists = raw.get("distances", [[]])[0]
-                for i, doc in enumerate(docs):
-                    dist = dists[i] if i < len(dists) else None
-                    sim = (1 - dist) if dist is not None else None
-                    candidates.append({"text": doc, "metadata": metas[i] if i < len(metas) else {}, "distance": dist, "similarity": sim})
+            candidates = self.legal_corpus_repo.retrieve_by_query(
+                query_embedding=emb,
+                top_k=top_k,
+                recall_top_k=recall_top_k,
+                law_name=law_name,
+            )
             reranked = self.reranker.rerank(query=rewritten, candidates=candidates, top_k=top_k)
             reranked = self._dedup_retrieved_candidates(reranked)
             return reranked[:top_k]
         except Exception as e:
-            app_logger.error(f"\u274c \u6cd5\u5f8b\u6761\u6587\u68c0\u7d22\u5931\u8d25: {str(e)}")
+            app_logger.error(f"❌ 法律条文检索失败: {str(e)}")
             return self._dedup_retrieved_candidates(sorted(candidates, key=lambda x: x.get("similarity") or -1, reverse=True))[:top_k] if candidates else []
 
     def list_laws(self):
-        collection = self._get_law_collection()
         try:
-            results = collection.get()
+            results = self.law_store.get()
             if not results or not results.get("metadatas"):
                 return []
             stats: Dict[str, int] = {}
@@ -244,12 +262,10 @@ class RAGService:
             return []
 
     def delete_law(self, law_name: str):
-        collection = self._get_law_collection()
         try:
-            results = collection.get(where={"law_name": law_name})
-            if results and results["ids"]:
-                collection.delete(ids=results["ids"])
-                return {"law_name": law_name, "deleted_count": len(results["ids"]), "status": "success"}
+            deleted = self.legal_corpus_repo.delete_by_law_id(law_name)
+            if deleted > 0:
+                return {"law_name": law_name, "deleted_count": deleted, "status": "success"}
             return {"law_name": law_name, "deleted_count": 0, "status": "not_found"}
         except Exception as e:
             return {"law_name": law_name, "deleted_count": 0, "status": "error", "error": str(e)}

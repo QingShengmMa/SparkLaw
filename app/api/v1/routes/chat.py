@@ -114,11 +114,29 @@ async def chat_stream(
                 thread_id=request.thread_id,
                 enable_deep_think=request.enable_deep_think,
                 enable_web_search=request.enable_web_search,
+                legal_context=legal_context,
             ):
                 yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
         except Exception as e:
             app_logger.error(f"流式输出错误: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'role':'error','content':str(e)}, ensure_ascii=False)}\n\n"
+            err_text = str(e)
+            if "GUARDRAIL_BLOCKED" in err_text:
+                payload = {
+                    "type": "error",
+                    "role": "error",
+                    "error_code": "GUARDRAIL_BLOCKED",
+                    "message": "回答因合规校验未通过而被拦截，请调整问题后重试。",
+                }
+                yield f"event: error\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            else:
+                payload = {
+                    "type": "error",
+                    "role": "error",
+                    "error_code": "STREAM_RUNTIME_ERROR",
+                    "message": err_text,
+                    "content": err_text,
+                }
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -126,4 +144,8 @@ async def chat_stream(
 @router.post("/reset", response_model=ResetResponse, summary="重置会话")
 async def reset(request: ResetRequest):
     success = legal_agent.reset_session(request.session_id)
-    return ResetResponse(success=success, session_id=request.session_id)
+    return ResetResponse(
+        success=success,
+        message="会话已重置" if success else "会话重置失败",
+        session_id=request.session_id,
+    )
