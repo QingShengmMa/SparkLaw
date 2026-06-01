@@ -20,8 +20,10 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build args for injecting API URL at build time
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+# Build args for injecting API URLs at build time
+ARG BACKEND_INTERNAL_URL=http://backend:8000
+ARG NEXT_PUBLIC_API_URL=
+ENV BACKEND_INTERNAL_URL=$BACKEND_INTERNAL_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -39,6 +41,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
+    BACKEND_INTERNAL_URL=http://backend:8000 \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 

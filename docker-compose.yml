@@ -21,6 +21,26 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Qdrant（分布式向量数据库）─────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: sparklaw-qdrant
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    networks:
+      - sparklaw-network
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ── FastAPI 后端 ──────────────────────────────────────────────
   backend:
     build:
@@ -37,11 +57,32 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       # LLM
       - LLM_MODE=${LLM_MODE:-cloud}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_PROVIDER_ORDER=${LLM_PROVIDER_ORDER:-groq,deepseek}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_BASE_URL=${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.1-8b-instant}
+      - GROQ_INPUT_COST_PER_1M=${GROQ_INPUT_COST_PER_1M:-0.05}
+      - GROQ_OUTPUT_COST_PER_1M=${GROQ_OUTPUT_COST_PER_1M:-0.08}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-chat}
+      - DEEPSEEK_INPUT_COST_PER_1M=${DEEPSEEK_INPUT_COST_PER_1M:-0.27}
+      - DEEPSEEK_OUTPUT_COST_PER_1M=${DEEPSEEK_OUTPUT_COST_PER_1M:-1.10}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE:-0.3}
       - OPENAI_MAX_TOKENS=${OPENAI_MAX_TOKENS:-2048}
+      # Auth
+      - AUTH_ENABLED=${AUTH_ENABLED:-true}
+      - AUTH_ALLOW_REGISTRATION=${AUTH_ALLOW_REGISTRATION:-true}
+      - AUTH_REGISTRATION_INVITE_CODE=${AUTH_REGISTRATION_INVITE_CODE:-}
+      - AUTH_DB_PATH=/app/data/sparklaw.sqlite3
+      - AUTH_COOKIE_NAME=${AUTH_COOKIE_NAME:-sparklaw_session}
+      - AUTH_COOKIE_SECURE=${AUTH_COOKIE_SECURE:-false}
+      - AUTH_COOKIE_SAMESITE=${AUTH_COOKIE_SAMESITE:-lax}
+      - AUTH_SESSION_TTL_DAYS=${AUTH_SESSION_TTL_DAYS:-14}
+      - AUTH_PASSWORD_MIN_LENGTH=${AUTH_PASSWORD_MIN_LENGTH:-10}
       # Ollama (local mode)
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
@@ -51,10 +92,16 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/1
       - CELERY_RESULT_BACKEND=redis://redis:6379/2
-      # Vector DB
-      - CHROMA_PERSIST_DIR=/app/data/chroma
+      # Vector DB (Qdrant)
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - QDRANT_COLLECTION_CONTRACTS=${QDRANT_COLLECTION_CONTRACTS:-legal_contracts}
+      - QDRANT_COLLECTION_LAWS=${QDRANT_COLLECTION_LAWS:-legal_corpus}
+      - QDRANT_VECTOR_SIZE=${QDRANT_VECTOR_SIZE:-512}
       - ENABLE_SEMANTIC_MEMORY=${ENABLE_SEMANTIC_MEMORY:-false}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-small-zh-v1.5}
+      # 兼容旧配置（用于数据迁移）
+      - CHROMA_PERSIST_DIR=/app/data/chroma
       # Jurisdiction
       - DEFAULT_JURISDICTION=${DEFAULT_JURISDICTION:-中国}
     volumes:
@@ -62,6 +109,8 @@ services:
       - backend_logs:/app/logs
     depends_on:
       redis:
+        condition: service_healthy
+      qdrant:
         condition: service_healthy
     networks:
       - sparklaw-network
@@ -78,14 +127,16 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        - BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL:-http://backend:8000}
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
     container_name: sparklaw-frontend
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      - BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL:-http://backend:8000}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
     depends_on:
       backend:
         condition: service_healthy
@@ -104,5 +155,6 @@ networks:
 
 volumes:
   redis_data:
+  qdrant_storage:
   backend_data:
   backend_logs:

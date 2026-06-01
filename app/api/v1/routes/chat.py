@@ -2,9 +2,9 @@
 法律咨询路由
 """
 import json
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from typing import Optional
+from app.auth.dependencies import require_usage_context
 from app.models.request import ChatRequest, ResetRequest
 from app.models.response import ChatResponse, ResetResponse
 from app.services.legal_agent import legal_agent
@@ -12,32 +12,21 @@ from app.llm.factory import LLMFactory
 from app.core.memory_manager import memory_manager
 from app.core.logger import app_logger
 
-router = APIRouter(prefix="/legal", tags=["法律咨询"])
+router = APIRouter(
+    prefix="/legal",
+    tags=["法律咨询"],
+    dependencies=[Depends(require_usage_context)],
+)
 
 
 @router.post("/chat", response_model=ChatResponse, summary="法律咨询")
 async def chat(
     request: ChatRequest,
-    x_api_key: Optional[str] = Header(default=None),
-    x_api_base_url: Optional[str] = Header(default=None),
-    x_api_model: Optional[str] = Header(default=None),
-    x_api_temperature: Optional[str] = Header(default=None),
-    x_api_max_tokens: Optional[str] = Header(default=None),
 ):
-    custom_config = None
-    if x_api_key:
-        custom_config = {
-            "api_key": x_api_key,
-            "base_url": x_api_base_url,
-            "model": x_api_model,
-            "temperature": float(x_api_temperature) if x_api_temperature else None,
-            "max_tokens": int(x_api_max_tokens) if x_api_max_tokens else None,
-        }
     result = await legal_agent.chat(
         question=request.question,
         session_id=request.session_id,
         personality=request.personality,
-        custom_config=custom_config,
         thread_id=request.thread_id,
     )
     return ChatResponse(
@@ -50,26 +39,12 @@ async def chat(
 @router.post("/stream", summary="流式法律咨询")
 async def chat_stream(
     request: ChatRequest,
-    x_api_key: Optional[str] = Header(default=None),
-    x_api_base_url: Optional[str] = Header(default=None),
-    x_api_model: Optional[str] = Header(default=None),
-    x_api_temperature: Optional[str] = Header(default=None),
-    x_api_max_tokens: Optional[str] = Header(default=None),
 ):
-    custom_config = None
-    if x_api_key:
-        custom_config = {
-            "api_key": x_api_key,
-            "base_url": x_api_base_url,
-            "model": x_api_model,
-            "temperature": float(x_api_temperature) if x_api_temperature else None,
-            "max_tokens": int(x_api_max_tokens) if x_api_max_tokens else None,
-        }
-
     async def generate():
         try:
             from app.agents.chat_methods import get_legal_agent
             from app.tools.legal_tools import get_tools
+            from app.core.profiler import TTFTTracker
             agent = get_legal_agent()
 
             # 根据前端开关动态构建工具列表
@@ -102,12 +77,23 @@ async def chat_stream(
             )
 
             # 构建使用动态工具列表的 graph
-            base_llm = LLMFactory.create_llm(**({
-                k: v for k, v in custom_config.items() if v
-            } if custom_config and custom_config.get("api_key") else {}))
+            base_llm = LLMFactory.create_llm()
             llm_with_tools = base_llm.bind_tools(tools)
             graph_to_use = agent._build_react_graph(llm_with_tools)
 
+            # [PERF_CTX] 上下文 Token 用量明细
+            from app.core.profiler import log_context_tokens, E2ETimer
+            _history_msgs = [m for m in messages[1:-1]]  # 去掉 system 和最后一条 user
+            log_context_tokens(
+                session_id=request.session_id,
+                system_prompt=messages[0].content if messages else "",
+                summary_memory=summary_memory or "",
+                semantic_memories=semantic_memories or [],
+                legal_context=legal_context or "",
+                history_messages=_history_msgs,
+                user_input=request.question,
+            )
+            tracker = TTFTTracker(session_id=request.session_id)
             async for chunk in agent.run_react_event_stream(
                 messages,
                 graph_to_use=graph_to_use,
@@ -116,6 +102,7 @@ async def chat_stream(
                 enable_web_search=request.enable_web_search,
                 legal_context=legal_context,
             ):
+                tracker.mark_first_token(chunk)
                 yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
         except Exception as e:
             app_logger.error(f"流式输出错误: {e}")

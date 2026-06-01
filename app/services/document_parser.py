@@ -85,6 +85,12 @@ class DocumentParser:
         except Exception as e:
             app_logger.error(f"❌ 文件解析失败: {filename}, 错误: {str(e)}")
             raise HTTPException(status_code=500, detail=f"文件解析失败: {str(e)}")
+        finally:
+            # 确保文件句柄被释放，防止高并发下的资源泄漏
+            try:
+                await file.close()
+            except Exception as close_error:
+                app_logger.warning(f"⚠️ 文件关闭时出现异常: {str(close_error)}")
     
     def _get_file_extension(self, filename: str) -> str:
         """

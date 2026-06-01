@@ -14,6 +14,8 @@ import { streamCourtDebate, CourtSSEEvent } from '@/lib/api';
 // 后端新协议扩展类型
 interface CourtChunkEvent {
   type: 'new_message' | 'chunk' | 'result' | 'evidence_list' | 'law_list' | 'evidence_reference' | 'law_reference' | 'thread';
+  // thread 事件专用字段
+  thread_id?: string;
   msg_id?: string;
   node?: string;
   role?: string;
@@ -108,8 +110,38 @@ function buildEvidenceName(category: string, seq: number): string {
   return `${category}${String(seq).padStart(3, '0')}`;
 }
 
+function extractVerdictBody(raw: string): string {
+  const text = (raw || '').trim();
+  if (!text) return '';
+
+  const jsonStart = text.indexOf('{');
+  const jsonEnd = text.lastIndexOf('}');
+  if (jsonStart >= 0 && jsonEnd > jsonStart) {
+    try {
+      const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1)) as { verdict_text?: unknown };
+      if (typeof parsed.verdict_text === 'string' && parsed.verdict_text.trim()) {
+        return parsed.verdict_text.trim();
+      }
+    } catch {
+      // Fall through to the text wrapper cleanup below.
+    }
+  }
+
+  const verdictTextMatch = text.match(/(?:^|\n)\s*verdict_text\s*:?\s*\n+/i);
+  if (verdictTextMatch?.index !== undefined) {
+    return text.slice(verdictTextMatch.index + verdictTextMatch[0].length).trim();
+  }
+
+  return text
+    .replace(/^\s*VerdictResult\s*/i, '')
+    .replace(/^\s*plaintiff_win_rate\s*:\s*\d{1,3}\s*/im, '')
+    .replace(/^\s*defendant_win_rate\s*:\s*\d{1,3}\s*/im, '')
+    .replace(/^\s*verdict_text\s*:?\s*/im, '')
+    .trim();
+}
+
 function toPlainDisplayText(raw: string): string {
-  const cleaned = (raw || '')
+  const cleaned = extractVerdictBody(raw)
     .replace(/^#{1,6}\s*/gm, '')
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
@@ -127,6 +159,20 @@ function toPlainDisplayText(raw: string): string {
 
 const TRIAL_STAGES = ['开庭准备', '法庭调查', '举证质证', '法庭辩论', '最后陈述', '评议宣判'] as const;
 type TrialStage = typeof TRIAL_STAGES[number];
+
+// 阶段映射：后端 phase 字段 -> 前端显示阶段
+const PHASE_TO_STAGE_MAP: Record<string, TrialStage> = {
+  'opening': '开庭准备',
+  'investigation': '法庭调查',
+  'evidence': '举证质证',
+  'debate': '法庭辩论',
+  'statement': '最后陈述',
+  'verdict': '评议宣判',
+  // 兼容可能的其他命名
+  'cross_examination': '举证质证',
+  'final_statement': '最后陈述',
+  'judgment': '评议宣判',
+};
 
 function detectTrialStage(text: string): TrialStage | null {
   const t = toPlainDisplayText(text);
@@ -553,18 +599,14 @@ function LiveView(props: {
   onReferenceLeave: () => void;
   onReferenceClick: (type: '证据' | '法条', value: string) => void;
   resolveRefDetail: (type: '证据' | '法条', value: string) => string | undefined;
+  // ✅ 新增：阶段相关 props
+  currentStage: TrialStage;
+  completedStages: Set<TrialStage>;
+  stageMessageMap: Map<TrialStage, ChatMsg>;
 }) {
-  const { caseDesc, userRole, chatHistory, chatEndRef, isStreaming, scores, inputText, setInputText, onSpeak, onBack, onEndReview, leftSidebarOpen, rightSidebarOpen, onToggleLeftSidebar, onToggleRightSidebar, onJumpToMessage, evidenceRefs, lawRefs, activeEvidenceId, activeLawId, onReferenceHover, onReferenceLeave, onReferenceClick, resolveRefDetail } = props;
+  const { caseDesc, userRole, chatHistory, chatEndRef, isStreaming, scores, inputText, setInputText, onSpeak, onBack, onEndReview, leftSidebarOpen, rightSidebarOpen, onToggleLeftSidebar, onToggleRightSidebar, onJumpToMessage, evidenceRefs, lawRefs, activeEvidenceId, activeLawId, onReferenceHover, onReferenceLeave, onReferenceClick, resolveRefDetail, currentStage, completedStages, stageMessageMap } = props;
 
-  const stageMessageMap = new Map<TrialStage, ChatMsg>();
-  let currentStage: TrialStage = '开庭准备';
-  chatHistory.forEach((m) => {
-    if (m.role !== 'judge') return;
-    const stage = detectTrialStage(m.content);
-    if (!stage) return;
-    currentStage = stage;
-    stageMessageMap.set(stage, m);
-  });
+  // ✅ 移除旧的本地计算逻辑，直接使用传入的状态
   const currentStageIndex = TRIAL_STAGES.indexOf(currentStage);
 
   const classifyByParty = <T extends { id?: string; title?: string; content?: string; party?: 'plaintiff' | 'defendant' | 'both' }>(
@@ -682,21 +724,52 @@ function LiveView(props: {
               <div className="relative border-l-2 border-slate-100 dark:border-slate-700 ml-2 space-y-3 pl-3 overflow-y-auto flex-1">
                 {TRIAL_STAGES.map((stage, i) => {
                   const msg = stageMessageMap.get(stage);
-                  const reached = i <= currentStageIndex;
-                  const active = i === currentStageIndex;
+                  const completed = completedStages.has(stage);
+                  const active = stage === currentStage;
+                  
                   return (
                     <div key={stage} className="relative">
-                      <div className={`absolute -left-[17px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-900 ${active ? 'bg-blue-500' : reached ? 'bg-amber-400' : 'bg-slate-300 dark:bg-slate-600'}`}/>
+                      {/* ✅ 更新圆点样式：已完成=绿色，进行中=蓝色，未开始=灰色 */}
+                      <div className={`absolute -left-[17px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-900 transition-all ${
+                        active ? 'bg-blue-500 shadow-lg shadow-blue-500/50' : 
+                        completed ? 'bg-green-500' : 
+                        'bg-slate-300 dark:bg-slate-600'
+                      }`}/>
+                      
                       <button
                         type="button"
                         disabled={!msg?.msgId}
                         onClick={() => msg?.msgId && onJumpToMessage(msg.msgId)}
-                        className={`text-left w-full text-xs transition ${msg?.msgId ? 'text-slate-700 dark:text-slate-200 hover:text-blue-600 cursor-pointer' : 'text-slate-400 dark:text-slate-500 cursor-not-allowed'}`}
+                        className={`text-left w-full text-xs transition ${
+                          msg?.msgId ? 'text-slate-700 dark:text-slate-200 hover:text-blue-600 cursor-pointer' : 
+                          'text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                        }`}
                       >
-                        <span className={`font-semibold ${active ? 'text-blue-600' : ''}`}>{stage}</span>
-                        {active && <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 text-[9px] font-bold">进行中</span>}
+                        {/* ✅ 阶段标题样式 */}
+                        <span className={`font-semibold ${
+                          active ? 'text-blue-600' : 
+                          completed ? 'text-green-600 dark:text-green-400' : 
+                          'text-slate-400 dark:text-slate-500'
+                        }`}>
+                          {stage}
+                          {/* ✅ 已完成标记 */}
+                          {completed && !active && (
+                            <CheckCircle2 className="w-3 h-3 inline-block ml-1 text-green-500" />
+                          )}
+                        </span>
+                        
+                        {/* ✅ 进行中标签 */}
+                        {active && (
+                          <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 text-[9px] font-bold">
+                            进行中
+                          </span>
+                        )}
+                        
+                        {/* ✅ 内容预览 */}
                         <span className="block mt-0.5 line-clamp-2 text-[10px]">
-                          {msg ? `${toPlainDisplayText(msg.content).slice(0,42)}${toPlainDisplayText(msg.content).length>42?'...':''}` : '等待该阶段...'}
+                          {completed && !msg ? '已完成' : 
+                           msg ? `${toPlainDisplayText(msg.content).slice(0,42)}${toPlainDisplayText(msg.content).length>42?'...':''}` : 
+                           '等待该阶段...'}
                         </span>
                       </button>
                     </div>
@@ -997,6 +1070,14 @@ export default function CourtPage() {
   const [activeEvidenceId, setActiveEvidenceId] = useState<string | null>(null);
   const [activeLawId, setActiveLawId] = useState<string | null>(null);
   const [courtThreadId, setCourtThreadId] = useState<string | null>(null);
+  
+  // ✅ 新增：当前庭审阶段状态
+  const [currentStage, setCurrentStage] = useState<TrialStage>('开庭准备');
+  // ✅ 新增：已完成的阶段集合
+  const [completedStages, setCompletedStages] = useState<Set<TrialStage>>(new Set());
+  // ✅ 新增：阶段与消息的映射关系
+  const [stageMessageMap, setStageMessageMap] = useState<Map<TrialStage, ChatMsg>>(new Map());
+  
   const visibleCaseExamples = CASE_EXAMPLES.slice(templatePage * 4, templatePage * 4 + 4);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const courtSessionIdRef = useRef(`court_${Date.now()}`);
@@ -1037,6 +1118,16 @@ export default function CourtPage() {
     setActiveEvidenceId(null);
     setActiveLawId(null);
     setCourtThreadId(null);
+    
+    // ✅ 重置阶段状态
+    setCurrentStage('开庭准备');
+    setCompletedStages(new Set());
+    setStageMessageMap(new Map());
+    
+    // ✅ 重置阶段状态
+    setCurrentStage('开庭准备');
+    setCompletedStages(new Set());
+    setStageMessageMap(new Map());
 
     // 本地实时评分引擎
     const computeScores = (acc: typeof scoreAccRef.current) => {
@@ -1084,6 +1175,21 @@ export default function CourtPage() {
           } else if (event.type === 'new_message') {
             const mappedRole = mapRole(event);
             const msgId = 'msg_id' in event ? event.msg_id : undefined;
+            
+            // ✅ 方案A：优先使用后端的 phase 字段更新阶段
+            const backendPhase = 'phase' in event ? event.phase : undefined;
+            if (backendPhase && PHASE_TO_STAGE_MAP[backendPhase]) {
+              const newStage = PHASE_TO_STAGE_MAP[backendPhase];
+              setCurrentStage(newStage);
+              setCompletedStages(prev => {
+                const next = new Set(prev);
+                const currentIndex = TRIAL_STAGES.indexOf(newStage);
+                // 标记当前阶段之前的所有阶段为已完成
+                TRIAL_STAGES.slice(0, currentIndex).forEach(stage => next.add(stage));
+                return next;
+              });
+            }
+            
             // 每条新消息更新消息计数和阶段
             if (mappedRole !== 'system') {
               scoreAccRef.current.messages += 1;
@@ -1091,15 +1197,41 @@ export default function CourtPage() {
               if (phase) scoreAccRef.current.phases.add(phase);
               setScores(computeScores(scoreAccRef.current));
             }
-            setChatHistory(prev => [
-              ...prev,
-              {
+            
+            setChatHistory(prev => {
+              const newMsg: ChatMsg = {
                 msgId: msgId || `msg_${Date.now()}_${prev.length}`,
                 role: mappedRole,
                 name: event.role || '系统',
                 content: '',
-              },
-            ]);
+              };
+              
+              // ✅ 如果是法官消息，尝试检测阶段变化（方案B：降级方案）
+              if (mappedRole === 'judge' && !backendPhase) {
+                // 延迟检测，等内容完整后再判断
+                setTimeout(() => {
+                  setChatHistory(currentHistory => {
+                    const msg = currentHistory.find(m => m.msgId === newMsg.msgId);
+                    if (!msg?.content) return currentHistory;
+                    
+                    const detectedStage = detectTrialStage(msg.content);
+                    if (detectedStage) {
+                      setCurrentStage(detectedStage);
+                      setCompletedStages(prevCompleted => {
+                        const nextCompleted = new Set(prevCompleted);
+                        const currentIndex = TRIAL_STAGES.indexOf(detectedStage);
+                        TRIAL_STAGES.slice(0, currentIndex).forEach(stage => nextCompleted.add(stage));
+                        return nextCompleted;
+                      });
+                      setStageMessageMap(prevMap => new Map(prevMap).set(detectedStage, msg));
+                    }
+                    return currentHistory;
+                  });
+                }, 500);
+              }
+              
+              return [...prev, newMsg];
+            });
           } else if (event.type === 'chunk') {
             const chunkText = event.content || '';
             if (!chunkText) return;
@@ -1112,6 +1244,23 @@ export default function CourtPage() {
                 for (let i = next.length - 1; i >= 0; i -= 1) {
                   if (next[i].msgId === msgId) {
                     next[i] = { ...next[i], content: (next[i].content || '') + chunkText };
+                    
+                    // ✅ 实时检测阶段变化（针对流式内容）
+                    const mappedRole = mapRole(event);
+                    if (mappedRole === 'judge') {
+                      const detectedStage = detectTrialStage(next[i].content);
+                      if (detectedStage) {
+                        setCurrentStage(detectedStage);
+                        setCompletedStages(prevCompleted => {
+                          const nextCompleted = new Set(prevCompleted);
+                          const currentIndex = TRIAL_STAGES.indexOf(detectedStage);
+                          TRIAL_STAGES.slice(0, currentIndex).forEach(stage => nextCompleted.add(stage));
+                          return nextCompleted;
+                        });
+                        setStageMessageMap(prevMap => new Map(prevMap).set(detectedStage, next[i]));
+                      }
+                    }
+                    
                     return next;
                   }
                 }
@@ -1121,6 +1270,22 @@ export default function CourtPage() {
               if (next.length > 0 && next[next.length - 1].role === mappedRole) {
                 const last = next[next.length - 1];
                 next[next.length - 1] = { ...last, content: (last.content || '') + chunkText };
+                
+                // ✅ 实时检测阶段变化
+                if (mappedRole === 'judge') {
+                  const detectedStage = detectTrialStage(next[next.length - 1].content);
+                  if (detectedStage) {
+                    setCurrentStage(detectedStage);
+                    setCompletedStages(prevCompleted => {
+                      const nextCompleted = new Set(prevCompleted);
+                      const currentIndex = TRIAL_STAGES.indexOf(detectedStage);
+                      TRIAL_STAGES.slice(0, currentIndex).forEach(stage => nextCompleted.add(stage));
+                      return nextCompleted;
+                    });
+                    setStageMessageMap(prevMap => new Map(prevMap).set(detectedStage, next[next.length - 1]));
+                  }
+                }
+                
                 return next;
               }
 
@@ -1240,15 +1405,51 @@ export default function CourtPage() {
           if (event.type === 'new_message') {
             const mappedRole = mapRole(event);
             const msgId = 'msg_id' in event ? event.msg_id : undefined;
-            setChatHistory(prev => [
-              ...prev,
-              {
-                msgId: msgId || `msg_${Date.now()}_${prev.length}`,
-                role: mappedRole,
-                name: event.role || '系统',
-                content: '',
-              },
-            ]);
+            
+            // ✅ 优先使用后端 phase 字段
+            const backendPhase = 'phase' in event ? event.phase : undefined;
+            if (backendPhase && PHASE_TO_STAGE_MAP[backendPhase]) {
+              const newStage = PHASE_TO_STAGE_MAP[backendPhase];
+              setCurrentStage(newStage);
+              setCompletedStages(prev => {
+                const next = new Set(prev);
+                const currentIndex = TRIAL_STAGES.indexOf(newStage);
+                TRIAL_STAGES.slice(0, currentIndex).forEach(stage => next.add(stage));
+                return next;
+              });
+            }
+            
+            const newMsg: ChatMsg = {
+              msgId: msgId || `msg_${Date.now()}_${Date.now()}`,
+              role: mappedRole,
+              name: event.role || '系统',
+              content: '',
+            };
+            
+            setChatHistory(prev => [...prev, newMsg]);
+            
+            // ✅ 降级方案：延迟检测
+            if (mappedRole === 'judge' && !backendPhase) {
+              setTimeout(() => {
+                setChatHistory(currentHistory => {
+                  const msg = currentHistory.find(m => m.msgId === newMsg.msgId);
+                  if (!msg?.content) return currentHistory;
+                  
+                  const detectedStage = detectTrialStage(msg.content);
+                  if (detectedStage) {
+                    setCurrentStage(detectedStage);
+                    setCompletedStages(prev => {
+                      const next = new Set(prev);
+                      const currentIndex = TRIAL_STAGES.indexOf(detectedStage);
+                      TRIAL_STAGES.slice(0, currentIndex).forEach(stage => next.add(stage));
+                      return next;
+                    });
+                    setStageMessageMap(prev => new Map(prev).set(detectedStage, msg));
+                  }
+                  return currentHistory;
+                });
+              }, 500);
+            }
             return;
           }
 
@@ -1262,6 +1463,23 @@ export default function CourtPage() {
                 for (let i = next.length - 1; i >= 0; i -= 1) {
                   if (next[i].msgId === msgId) {
                     next[i] = { ...next[i], content: (next[i].content || '') + chunkText };
+                    
+                    // ✅ 实时检测阶段
+                    const mappedRole = mapRole(event);
+                    if (mappedRole === 'judge') {
+                      const detectedStage = detectTrialStage(next[i].content);
+                      if (detectedStage) {
+                        setCurrentStage(detectedStage);
+                        setCompletedStages(prevCompleted => {
+                          const nextCompleted = new Set(prevCompleted);
+                          const currentIndex = TRIAL_STAGES.indexOf(detectedStage);
+                          TRIAL_STAGES.slice(0, currentIndex).forEach(stage => nextCompleted.add(stage));
+                          return nextCompleted;
+                        });
+                        setStageMessageMap(prevMap => new Map(prevMap).set(detectedStage, next[i]));
+                      }
+                    }
+                    
                     return next;
                   }
                 }
@@ -1271,6 +1489,22 @@ export default function CourtPage() {
               if (next.length > 0 && next[next.length - 1].role === mappedRole) {
                 const last = next[next.length - 1];
                 next[next.length - 1] = { ...last, content: (last.content || '') + chunkText };
+                
+                // ✅ 实时检测阶段
+                if (mappedRole === 'judge') {
+                  const detectedStage = detectTrialStage(next[next.length - 1].content);
+                  if (detectedStage) {
+                    setCurrentStage(detectedStage);
+                    setCompletedStages(prevCompleted => {
+                      const nextCompleted = new Set(prevCompleted);
+                      const currentIndex = TRIAL_STAGES.indexOf(detectedStage);
+                      TRIAL_STAGES.slice(0, currentIndex).forEach(stage => nextCompleted.add(stage));
+                      return nextCompleted;
+                    });
+                    setStageMessageMap(prevMap => new Map(prevMap).set(detectedStage, next[next.length - 1]));
+                  }
+                }
+                
                 return next;
               }
 
@@ -1378,6 +1612,12 @@ export default function CourtPage() {
     setLawRefs([]);
     setActiveEvidenceId(null);
     setActiveLawId(null);
+    
+    // ✅ 重置阶段状态
+    setCurrentStage('开庭准备');
+    setCompletedStages(new Set());
+    setStageMessageMap(new Map());
+    
     // handleStart 依赖 view==='live' 之外的状态，直接调用即可
     setView('live');
     // 用 setTimeout 让 React 先完成 state 更新再触发庭审
@@ -1477,6 +1717,9 @@ export default function CourtPage() {
           onReferenceLeave={handleReferenceLeave}
           onReferenceClick={handleReferenceClick}
           resolveRefDetail={resolveRefDetail}
+          currentStage={currentStage}
+          completedStages={completedStages}
+          stageMessageMap={stageMessageMap}
         />
       )}
       {view === 'review' && (

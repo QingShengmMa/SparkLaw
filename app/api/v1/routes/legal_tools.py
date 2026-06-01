@@ -8,13 +8,18 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.auth.dependencies import require_usage_context
 from app.core.logger import app_logger
 from app.services.legal_agent import legal_agent
 
-router = APIRouter(prefix="/tools", tags=["法律工具"])
+router = APIRouter(
+    prefix="/tools",
+    tags=["法律工具"],
+    dependencies=[Depends(require_usage_context)],
+)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -66,25 +71,14 @@ async def _ai_call(
     system_prompt: str,
     user_content: str,
     session_id: str,
-    x_api_key: Optional[str],
-    x_api_base_url: Optional[str],
-    x_api_model: Optional[str],
 ) -> str:
     """统一 AI 调用封装，复用 legal_agent.chat 逻辑。"""
-    custom_config = None
-    if x_api_key:
-        custom_config = {
-            "api_key": x_api_key,
-            "base_url": x_api_base_url,
-            "model": x_api_model,
-        }
     full_prompt = f"{system_prompt}\n\n用户输入：{user_content}"
     try:
         result = await legal_agent.chat(
             question=full_prompt,
             session_id=session_id,
             personality="machine",
-            custom_config=custom_config,
         )
         return result.get("answer", "")
     except Exception as e:
@@ -100,17 +94,11 @@ async def _ai_call(
 )
 async def drafting(
     req: AIToolRequest,
-    x_api_key: Optional[str] = Header(default=None),
-    x_api_base_url: Optional[str] = Header(default=None),
-    x_api_model: Optional[str] = Header(default=None),
 ) -> AIToolResponse:
     answer = await _ai_call(
         system_prompt=_DRAFTING_PROMPT,
         user_content=req.content,
         session_id=f"drafting-{req.session_id}",
-        x_api_key=x_api_key,
-        x_api_base_url=x_api_base_url,
-        x_api_model=x_api_model,
     )
     return AIToolResponse(result=answer, session_id=req.session_id)
 
@@ -123,17 +111,11 @@ async def drafting(
 )
 async def evidence(
     req: AIToolRequest,
-    x_api_key: Optional[str] = Header(default=None),
-    x_api_base_url: Optional[str] = Header(default=None),
-    x_api_model: Optional[str] = Header(default=None),
 ) -> AIToolResponse:
     answer = await _ai_call(
         system_prompt=_EVIDENCE_PROMPT,
         user_content=req.content,
         session_id=f"evidence-{req.session_id}",
-        x_api_key=x_api_key,
-        x_api_base_url=x_api_base_url,
-        x_api_model=x_api_model,
     )
     return AIToolResponse(result=answer, session_id=req.session_id)
 
@@ -146,17 +128,11 @@ async def evidence(
 )
 async def compliance(
     req: AIToolRequest,
-    x_api_key: Optional[str] = Header(default=None),
-    x_api_base_url: Optional[str] = Header(default=None),
-    x_api_model: Optional[str] = Header(default=None),
 ) -> AIToolResponse:
     answer = await _ai_call(
         system_prompt=_COMPLIANCE_PROMPT,
         user_content=req.content,
         session_id=f"compliance-{req.session_id}",
-        x_api_key=x_api_key,
-        x_api_base_url=x_api_base_url,
-        x_api_model=x_api_model,
     )
     return AIToolResponse(result=answer, session_id=req.session_id)
 
@@ -266,9 +242,6 @@ async def drafting_generate(
     prompt: str = Form(..., description="案件事实描述"),
     template_type: str = Form(default="", description="文书类型提示"),
     file: Optional[UploadFile] = File(default=None),
-    x_api_key: Optional[str] = Header(default=None),
-    x_api_base_url: Optional[str] = Header(default=None),
-    x_api_model: Optional[str] = Header(default=None),
 ):
     """SSE 流式文书起草：先发进度日志，再流式输出文书内容。"""
 
@@ -298,12 +271,8 @@ async def drafting_generate(
 
             full_prompt = f"{_DRAFT_SYSTEM}\n\n{user_content}"
 
-            # 4. 创建 LLM（支持用户自定义 key）
-            llm = LLMFactory.create_llm(
-                api_key=x_api_key or None,
-                base_url=x_api_base_url or None,
-                model=x_api_model or None,
-            )
+            # 4. 使用服务端统一配置的 LLM 路由
+            llm = LLMFactory.create_llm()
 
             # 5. 流式输出文书内容（最多等待 110 秒）
             yield _sse({"type": "log", "progress": 70, "message": "大模型开始生成文书..."})
@@ -350,9 +319,6 @@ class RefineRequest(BaseModel):
 @router.post("/drafting/refine", summary="文书细节润色 SSE 流式")
 async def drafting_refine(
     req: RefineRequest,
-    x_api_key: Optional[str] = Header(default=None),
-    x_api_base_url: Optional[str] = Header(default=None),
-    x_api_model: Optional[str] = Header(default=None),
 ):
     """SSE 流式文书润色：根据微调指令修改已有文书并流式返回。"""
 
@@ -363,11 +329,7 @@ async def drafting_refine(
                 f"【原始文书】\n{req.current_content}\n\n"
                 f"【微调指令】\n{req.instruction}"
             )
-            llm = LLMFactory.create_llm(
-                api_key=x_api_key or None,
-                base_url=x_api_base_url or None,
-                model=x_api_model or None,
-            )
+            llm = LLMFactory.create_llm()
             full_content = ""
             async for chunk in llm.astream(full_prompt):
                 token = chunk.content if hasattr(chunk, "content") else str(chunk)

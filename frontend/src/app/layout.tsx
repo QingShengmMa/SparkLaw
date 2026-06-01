@@ -1,6 +1,7 @@
 'use client';
 
 import './globals.css';
+import AuthGate from '@/components/AuthGate';
 import ChatSidebar from '@/components/ChatSidebar';
 import { usePathname } from 'next/navigation';
 
@@ -14,6 +15,7 @@ export default function RootLayout({
 }) {
   const pathname = usePathname();
   const isHomePage = pathname === '/';
+  const isAuthPage = pathname === '/login' || pathname === '/register';
 
   return (
     <html lang="zh-CN">
@@ -31,11 +33,11 @@ export default function RootLayout({
         {/* 全局 Dashboard 布局 */}
         <div className="flex h-screen w-full overflow-hidden bg-background">
           {/* 全局侧边栏 - 首页不显示 */}
-          {!isHomePage && <ChatSidebar />}
+          {!isHomePage && !isAuthPage && <ChatSidebar />}
           
           {/* 主内容区域 */}
           <main className={`flex flex-1 flex-col ${isHomePage ? '' : 'overflow-y-auto'}`}>
-            {children}
+            <AuthGate>{children}</AuthGate>
           </main>
         </div>
       </body>

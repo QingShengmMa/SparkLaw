@@ -1,18 +1,17 @@
 # FastAPI Core
-fastapi>=0.109.0
-uvicorn[standard]>=0.27.0
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
 
 # LangChain Core
-langchain>=0.1.0
-langchain-core>=0.1.0
-langchain-community>=0.1.0
-langchain-openai>=0.0.5
-langchain-experimental>=0.0.50
-langgraph>=0.0.20
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+langchain-openai>=0.2.0
+langgraph>=1.0.0
 langgraph-checkpoint>=2.0.0
-langgraph-checkpoint-redis>=0.0.4
+langgraph-checkpoint-postgres>=2.0.0
 
 # Logging
 loguru>=0.7.2
@@ -42,8 +41,11 @@ PyMuPDF>=1.23.0
 python-docx>=1.1.0
 
 # Vector Database and Embeddings
-chromadb>=0.4.22
+qdrant-client>=1.7.0
 sentence-transformers>=2.3.0
+
+# BM25 Retrieval
+rank-bm25>=0.2.2
 
 # File Upload
 python-multipart>=0.0.6
@@ -53,6 +55,10 @@ sse-starlette>=1.6.5
 
 # Retry Mechanism
 tenacity>=8.2.3
+
+# Observability & Tracing
+arize-phoenix[evals]>=4.0.0
+openinference-instrumentation-langchain>=0.1.0
 
 # Async Task Queue
 celery>=5.4.0

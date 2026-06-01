@@ -30,9 +30,9 @@ class Reranker:
 
         if not self.external_api_url:
             try:
-                app_logger.info(f"🔄 正在加载 Reranker 模型: {self.model_name}")
+                app_logger.info(f"\U0001f504 正在加载 Reranker 模型: {self.model_name}")
                 self.cross_encoder = CrossEncoder(self.model_name)
-                app_logger.info("✅ Reranker 模型加载完成")
+                app_logger.info("\u2705 Reranker 模型加载完成")
             except Exception as e:
                 app_logger.warning(f"本地 Reranker 初始化失败，将回退向量排序: {str(e)}")
 
@@ -54,12 +54,17 @@ class Reranker:
         try:
             pairs = [(query, c.get("text", "")) for c in candidates]
             scores = self.cross_encoder.predict(pairs).tolist()
+
+            # [PERF_RERANK] 记录候选数与分数分布
+            from app.core.profiler import log_rerank_stats
+            log_rerank_stats(query_preview=query[:20], scores=scores, top_k=top_k)
+
             enriched = [{**item, "rerank_score": float(scores[idx])} for idx, item in enumerate(candidates)]
             enriched.sort(key=lambda x: x.get("rerank_score", -1.0), reverse=True)
             filtered = [x for x in enriched if x.get("rerank_score", -1.0) >= self.score_threshold]
             return (filtered if filtered else enriched)[:top_k]
         except Exception as e:
-            app_logger.warning(f"Rerank 失败，回退向量排序: {str(e)}")
+            app_logger.warning(f"Rerank \u5931\u8d25\uff0c\u56de\u9000\u5411\u91cf\u6392\u5e8f: {str(e)}")
             return sorted(
                 candidates,
                 key=lambda x: x.get("similarity") if x.get("similarity") is not None else -1,
@@ -84,7 +89,7 @@ class Reranker:
                 output.append({**candidates[idx], "rerank_score": item.get("score")})
             return output[:top_k] if output else candidates[:top_k]
         except Exception as e:
-            app_logger.warning(f"外部 Rerank API 调用失败，回退向量排序: {str(e)}")
+            app_logger.warning(f"\u5916\u90e8 Rerank API \u8c03\u7528\u5931\u8d25\uff0c\u56de\u9000\u5411\u91cf\u6392\u5e8f: {str(e)}")
             return sorted(
                 candidates,
                 key=lambda x: x.get("similarity") if x.get("similarity") is not None else -1,

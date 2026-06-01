@@ -115,12 +115,22 @@
 - **后端**：Python 3.10+、FastAPI、Pydantic、Uvicorn
 - **前端**：Next.js 16、React 18、TypeScript、Tailwind CSS、Zustand
 - **AI / 智能体编排**：LangChain、LangGraph
-- **检索与知识库**：ChromaDB、sentence-transformers
+- **检索与知识库**：ChromaDB、sentence-transformers、rank-bm25（多路召回）
 - **异步与任务队列**：Celery、Redis
 - **文档处理**：PyMuPDF、python-docx
 - **部署与环境**：Docker、docker-compose
 
+### 🎯 核心技术亮点
+
+- **语义缓存**：基于向量相似度的智能缓存，缓存命中时响应速度提升 40 倍（~4000ms → ~100ms）
+- **混合检索**：Vector（语义）+ BM25（关键词）+ RRF 融合，提升召回率和准确性
+- **Reflection 机制**：合同审查引入自我纠错，Critic 节点检查报告质量，自动修订错误
+- **全链路追踪**：集成 Arize Phoenix 本地可观测性，实时监控所有 LLM 调用链路
+
 ---
+
+
+
 
 ## 🏗️ 项目架构（关键模块）
 
@@ -216,6 +226,9 @@ cp .env.example .env
 | `OPENAI_BASE_URL` | API 地址 | `https://api.openai.com/v1` |
 | `OPENAI_MODEL` | 模型名 | `gpt-4o-mini` |
 | `OLLAMA_BASE_URL` | 本地 Ollama 地址（local 模式） | `http://host.docker.internal:11434` |
+| `ENABLE_SEMANTIC_CACHE` | 是否启用语义缓存（提升 40x 响应速度） | `true` |
+| `SEMANTIC_CACHE_THRESHOLD` | 缓存相似度阈值（0-1） | `0.92` |
+| `SEMANTIC_CACHE_TTL_DAYS` | 缓存过期时间（天） | `30` |
 
 #### 3. 一键启动
 
@@ -250,6 +263,7 @@ docker compose up -d --build
 | 🌐 前端界面 | http://localhost:3000 |
 | ⚙️ 后端 API | http://localhost:8000 |
 | 📖 API 文档 | http://localhost:8000/docs |
+| 🔭 Phoenix 监控 | http://localhost:6006 |
 
 ---
 

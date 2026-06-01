@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { MessageSquare, MoreHorizontal, Pencil, Pin, Plus, Scale, Trash2, Wrench, PanelLeftClose, PanelLeftOpen, Settings, type LucideIcon } from 'lucide-react';
+import { MessageSquare, MoreHorizontal, Pencil, Pin, Plus, Scale, Trash2, Wrench, PanelLeftClose, PanelLeftOpen, Settings, UserCircle, type LucideIcon } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import ScaleIcon from './ScaleIcon';
 import { useChatStore } from '@/store/chatStore';
@@ -18,6 +18,7 @@ const navigation: NavItem[] = [
   { name: '普法问答', href: '/chat', icon: MessageSquare },
   { name: '法律工具', href: '/tools', icon: Wrench },
   { name: '模拟法庭', href: '/debate', icon: Scale },
+  { name: '个人中心', href: '/account', icon: UserCircle },
 ];
 
 export default function ChatSidebar() {

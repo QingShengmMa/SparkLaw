@@ -6,6 +6,7 @@ Hybrid Memory Manager
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from datetime import datetime
 from typing import Dict, List, Any, Optional
@@ -28,6 +29,32 @@ class HybridMemoryManager:
         self._summary_store: Dict[str, str] = {}
 
         memory_dir = f"{settings.CHROMA_PERSIST_DIR}/user_memory"
+        
+        # ✅ 步骤1：创建持久化目录
+        try:
+            os.makedirs(memory_dir, exist_ok=True)
+            
+            # ✅ 步骤2：测试写权限
+            test_file = os.path.join(memory_dir, ".write_test")
+            try:
+                with open(test_file, "w") as f:
+                    f.write("test")
+                os.remove(test_file)
+                app_logger.info(f"✅ 用户记忆持久化目录写权限验证通过: {memory_dir}")
+            except (PermissionError, OSError) as perm_error:
+                app_logger.error(f"❌ 用户记忆持久化目录无写权限: {memory_dir}")
+                app_logger.warning(f"⚠️ 降级到内存模式（重启后记忆丢失）: {str(perm_error)}")
+                # 降级到内存模式：使用临时目录
+                import tempfile
+                memory_dir = tempfile.mkdtemp(prefix="sparklaw_memory_")
+                app_logger.info(f"📁 使用临时目录: {memory_dir}")
+        except Exception as e:
+            app_logger.error(f"❌ 用户记忆目录初始化失败: {str(e)}")
+            # 最后的降级方案：使用系统临时目录
+            import tempfile
+            memory_dir = tempfile.mkdtemp(prefix="sparklaw_memory_")
+            app_logger.warning(f"⚠️ 使用系统临时目录: {memory_dir}")
+        
         self.chroma_client = chromadb.PersistentClient(
             path=memory_dir,
             settings=ChromaSettings(anonymized_telemetry=False, allow_reset=True),
@@ -110,10 +137,21 @@ class HybridMemoryManager:
             f"新增历史：\n{overflow_text}"
         )
 
+        # [PERF_TOKEN] 压缩前文本（已有摘要 + 溢出历史）
+        _before_text = (previous_summary or "") + "\n" + overflow_text
+
         try:
             response = await self.summary_llm.ainvoke([HumanMessage(content=prompt)])
             summary = response.content if hasattr(response, "content") else str(response)
             self._summary_store[session_id] = summary.strip()
+
+            # [PERF_TOKEN] 压缩后打印 Token 压缩率
+            from app.core.profiler import log_compression_stats
+            log_compression_stats(
+                session_id=session_id,
+                before_text=_before_text,
+                after_text=summary.strip(),
+            )
         except Exception as e:
             app_logger.warning(f"更新摘要记忆失败 [session={session_id}]: {str(e)}")
 

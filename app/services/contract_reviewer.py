@@ -68,6 +68,10 @@ class ContractReviewer:
         """
         审查指定合同，识别风险并提供建议
         
+        增强功能：引入 Reflection (自我纠错) 机制
+        - 初次审查后，由 Critic 节点检查是否有法条错误或逻辑漏洞
+        - 如果发现问题，进入 Revise 节点重写（最多 1 次）
+        
         Args:
             contract_id: 合同唯一标识
             
@@ -99,11 +103,35 @@ class ContractReviewer:
             # 3. 构建审查提示词
             review_prompt = self._build_review_prompt(contract_text)
             
-            # 4. 调用 LLM 进行审查
+            # 4. 调用 LLM 进行初次审查
             app_logger.info("🤖 正在调用 LLM 进行合同审查...")
             review_result = await self._call_llm_for_review(review_prompt)
             
-            # 5. 解析并验证结果
+            # 5. 【新增】Reflection 机制：Critic 节点
+            revision_count = 0
+            max_revisions = 1
+            
+            app_logger.info("🔎 [Critic] 正在检查审查报告质量...")
+            critique = await self._critique_review(review_result, contract_text)
+            
+            # 6. 【新增】条件路由：如果 Critic 发现问题且未超过修订次数，进入 Revise 节点
+            if "APPROVED" not in critique and revision_count < max_revisions:
+                app_logger.warning(f"⚠️  [Critic] 发现问题，进入修订流程...")
+                app_logger.info(f"📝 [Critic] 批评意见: {critique[:200]}...")
+                
+                # 进入 Revise 节点
+                app_logger.info("✏️  [Revise] 正在根据批评意见修订审查报告...")
+                review_result = await self._revise_review(review_result, critique, contract_text)
+                revision_count += 1
+                
+                app_logger.info(f"✅ [Revise] 修订完成 (第 {revision_count} 次)")
+            else:
+                if "APPROVED" in critique:
+                    app_logger.info("✅ [Critic] 审查报告质量合格，无需修订")
+                else:
+                    app_logger.info(f"⏭️  [Critic] 已达最大修订次数 ({max_revisions})，直接输出")
+            
+            # 7. 解析并验证最终结果
             parsed_result = self._parse_review_result(review_result, contract_id)
             
             app_logger.info(f"✅ 合同审查完成，发现 {len(parsed_result.risks)} 个风险项")
@@ -202,7 +230,7 @@ class ContractReviewer:
     
     async def _call_llm_for_review(self, prompt: str) -> str:
         """
-        调用 LLM 进行审查
+        调用 LLM 进行审查（带超时保护）
         
         Args:
             prompt: 审查提示词
@@ -210,9 +238,14 @@ class ContractReviewer:
         Returns:
             str: LLM 返回的审查结果
         """
+        import asyncio
+        
         try:
-            # 使用 LangChain 调用 LLM
-            response = await self.llm.ainvoke(prompt)
+            # 使用 asyncio.wait_for 增加超时保护，防止 LLM 服务挂起导致请求永久等待
+            response = await asyncio.wait_for(
+                self.llm.ainvoke(prompt),
+                timeout=settings.LLM_TIMEOUT_SECONDS
+            )
             
             # 提取文本内容
             if hasattr(response, "content"):
@@ -222,6 +255,12 @@ class ContractReviewer:
             
             return result
         
+        except asyncio.TimeoutError:
+            app_logger.error(f"❌ LLM 调用超时（{settings.LLM_TIMEOUT_SECONDS}秒）")
+            raise Exception(
+                f"合同审查服务响应超时（超过 {settings.LLM_TIMEOUT_SECONDS} 秒），"
+                "请稍后重试或联系技术支持"
+            )
         except Exception as e:
             app_logger.error(f"❌ LLM 调用失败: {str(e)}")
             raise Exception(f"LLM 调用失败: {str(e)}")
@@ -318,6 +357,119 @@ class ContractReviewer:
         
         # 如果找不到，返回原文本
         return text
+    
+    async def _critique_review(self, review_result: str, contract_text: str) -> str:
+        """
+        【Critic 节点】批评/检查审查报告的质量
+        
+        扮演严苛的法务合伙人，检查审查报告是否存在：
+        - 法条引用错误
+        - 逻辑自相矛盾
+        - 重大风险遗漏
+        
+        Args:
+            review_result: 初次生成的审查报告
+            contract_text: 原始合同文本
+            
+        Returns:
+            str: 批评意见，如果完美则返回 "APPROVED"
+        """
+        import asyncio
+        
+        critique_prompt = f"""你现在是一位严苛的法务合伙人，负责审核下属律师提交的合同审查报告。
+
+原始合同内容（节选）：
+{contract_text[:2000]}...
+
+下属律师提交的审查报告：
+{review_result}
+
+请从以下角度严格检查这份报告：
+1. **法条引用准确性**：是否引用了错误的法律条文？是否曲解了法律含义？
+2. **逻辑一致性**：风险分析是否自相矛盾？修改建议是否与风险解释对应？
+3. **风险遗漏**：是否遗漏了明显的重大风险（如违约责任不对等、管辖权条款陷阱等）？
+4. **专业性**：风险解释是否过于简单？修改建议是否具体可行？
+
+如果报告质量合格，请直接输出：APPROVED
+
+如果发现问题，请输出具体的批评意见和修改要求，格式如下：
+问题1: [具体问题描述]
+修改要求: [如何改进]
+
+问题2: [具体问题描述]
+修改要求: [如何改进]
+"""
+        
+        try:
+            response = await asyncio.wait_for(
+                self.llm.ainvoke(critique_prompt),
+                timeout=settings.LLM_TIMEOUT_SECONDS
+            )
+            critique = response.content if hasattr(response, "content") else str(response)
+            return critique.strip()
+        except asyncio.TimeoutError:
+            app_logger.error(f"❌ [Critic] 批评节点超时（{settings.LLM_TIMEOUT_SECONDS}秒）")
+            # 超时时返回 APPROVED，避免阻塞流程
+            return "APPROVED"
+        except Exception as e:
+            app_logger.error(f"❌ [Critic] 批评节点执行失败: {str(e)}")
+            # 失败时返回 APPROVED，避免阻塞流程
+            return "APPROVED"
+    
+    async def _revise_review(
+        self, 
+        original_review: str, 
+        critique: str, 
+        contract_text: str
+    ) -> str:
+        """
+        【Revise 节点】根据批评意见修订审查报告
+        
+        Args:
+            original_review: 原始审查报告
+            critique: Critic 的批评意见
+            contract_text: 原始合同文本
+            
+        Returns:
+            str: 修订后的审查报告
+        """
+        import asyncio
+        
+        revise_prompt = f"""你是一位专业律师，刚刚收到了法务合伙人对你审查报告的批评意见。
+
+原始合同内容（节选）：
+{contract_text[:2000]}...
+
+你之前提交的审查报告：
+{original_review}
+
+法务合伙人的批评意见：
+{critique}
+
+请根据批评意见，修订你的审查报告。要求：
+1. 修正所有指出的错误（法条引用、逻辑矛盾等）
+2. 补充遗漏的重大风险
+3. 优化风险解释和修改建议，使其更专业、更具体
+4. 保持原有的 JSON 格式不变
+
+请输出修订后的完整审查报告（JSON 格式）：
+"""
+        
+        try:
+            response = await asyncio.wait_for(
+                self.llm.ainvoke(revise_prompt),
+                timeout=settings.LLM_TIMEOUT_SECONDS
+            )
+            revised = response.content if hasattr(response, "content") else str(response)
+            return revised.strip()
+        except asyncio.TimeoutError:
+            app_logger.error(f"❌ [Revise] 修订节点超时（{settings.LLM_TIMEOUT_SECONDS}秒）")
+            # 超时时返回原始报告
+            return original_review
+        except Exception as e:
+            app_logger.error(f"❌ [Revise] 修订节点执行失败: {str(e)}")
+            # 失败时返回原始报告
+            return original_review
 
 
 # 全局单例实例（延迟初始化）

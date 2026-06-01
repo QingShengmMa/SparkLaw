@@ -1,846 +1,253 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Save, Loader2, CheckCircle, AlertCircle, User, Sliders, Palette, Trash2, Cloud, Laptop } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle, Monitor, Moon, Palette, Settings2, Sun, Type, Zap } from 'lucide-react';
 import { useChatStore, PersonalityType } from '@/store/chatStore';
-import { useTheme } from '@/hooks/useTheme';
-import { useSettings } from '@/hooks/useSettings';
-import { checkHealth, type HealthResponse } from '@/lib/api';
+import { Density, FontSize, useSettings } from '@/hooks/useSettings';
+import { Theme, useTheme } from '@/hooks/useTheme';
 
-type SettingSection = 'general' | 'model' | 'appearance';
+type Section = 'general' | 'appearance';
 
-// 五大人格配置
-const personalities = [
-  {
-    id: 'machine' as PersonalityType,
-    name: '冰冷机器',
-    icon: '🤖',
-    description: '纯粹理性，只给法条和判例，不带任何情感色彩',
-    color: 'text-gray-800 dark:text-gray-200',
-  },
-  {
-    id: 'empathy' as PersonalityType,
-    name: '共情守护',
-    icon: '💙',
-    description: '温暖体贴，理解你的处境，提供情感支持和法律建议',
-    color: 'text-blue-700 dark:text-blue-300',
-  },
-  {
-    id: 'cost_expert' as PersonalityType,
-    name: '成本专家',
-    icon: '💰',
-    description: '精打细算，帮你算清每一分钱，追求性价比最优解',
-    color: 'text-green-700 dark:text-green-300',
-  },
-  {
-    id: 'aggressive' as PersonalityType,
-    name: '激进斗士',
-    icon: '⚔️',
-    description: '寸土必争，帮你找到所有可能的反击点和进攻策略',
-    color: 'text-red-700 dark:text-red-300',
-  },
-  {
-    id: 'educator' as PersonalityType,
-    name: '普法导师',
-    icon: '📚',
-    description: '耐心讲解，用通俗语言帮你理解复杂的法律概念',
-    color: 'text-purple-700 dark:text-purple-300',
-  },
+const personalities: Array<{ value: PersonalityType; label: string; desc: string }> = [
+  { value: 'empathy', label: '共情顾问', desc: '语气温和，适合日常咨询。' },
+  { value: 'machine', label: '严谨机器', desc: '结构直接，优先给出规则和结论。' },
+  { value: 'cost_expert', label: '成本专家', desc: '更关注成本、收益和执行路径。' },
+  { value: 'aggressive', label: '进攻策略', desc: '尽量寻找抗辩点和反击空间。' },
+  { value: 'educator', label: '普法导师', desc: '解释更细，适合学习法律概念。' },
+];
+
+const fontSizes: Array<{ value: FontSize; label: string; desc: string }> = [
+  { value: 'small', label: '小', desc: '信息密度更高。' },
+  { value: 'medium', label: '中', desc: '默认阅读尺寸。' },
+  { value: 'large', label: '大', desc: '更舒适的阅读体验。' },
+];
+
+const densities: Array<{ value: Density; label: string; desc: string }> = [
+  { value: 'compact', label: '紧凑', desc: '减少留白。' },
+  { value: 'standard', label: '标准', desc: '平衡内容与留白。' },
+  { value: 'relaxed', label: '宽松', desc: '更适合大屏。' },
+];
+
+const themes: Array<{ value: Theme; label: string; icon: typeof Sun }> = [
+  { value: 'light', label: '浅色', icon: Sun },
+  { value: 'dark', label: '深色', icon: Moon },
+  { value: 'system', label: '跟随系统', icon: Monitor },
 ];
 
 export default function SettingsPage() {
-  const [activeSection, setActiveSection] = useState<SettingSection>('general');
-  const [apiMode, setApiMode] = useState<'cloud' | 'local'>('cloud');
-  const [runtimeLlm, setRuntimeLlm] = useState<HealthResponse | null>(null);
-  const [apiKey, setApiKey] = useState('');
-  const [baseUrl, setBaseUrl] = useState('https://api.groq.com/openai/v1');
-  const [model, setModel] = useState('llama-3.1-70b-versatile');
-  const [temperature, setTemperature] = useState(0.3);
-  const [maxTokens, setMaxTokens] = useState(2048);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
-  
-  const { personality, setPersonality, sessions } = useChatStore();
+  const [section, setSection] = useState<Section>('general');
+  const { personality, setPersonality, sessions, deleteSession } = useChatStore();
+  const ui = useSettings();
   const { theme, setTheme } = useTheme();
-  const { settings, setFontSize, setDensity, setAnimationsEnabled, setFireEffectEnabled } = useSettings();
 
-  // 从 localStorage 加载配置
-  useEffect(() => {
-    const savedMode = localStorage.getItem('sparklaw_api_mode') as 'cloud' | 'local' | null;
-    const savedApiKey = localStorage.getItem('sparklaw_api_key');
-    const savedBaseUrl = localStorage.getItem('sparklaw_base_url');
-    const savedModel = localStorage.getItem('sparklaw_model');
-    const savedTemperature = localStorage.getItem('sparklaw_temperature');
-    const savedMaxTokens = localStorage.getItem('sparklaw_max_tokens');
-
-    if (savedMode === 'cloud' || savedMode === 'local') setApiMode(savedMode);
-    if (savedApiKey) setApiKey(savedApiKey);
-    if (savedBaseUrl) setBaseUrl(savedBaseUrl);
-    if (savedModel) setModel(savedModel);
-    if (savedTemperature) setTemperature(parseFloat(savedTemperature));
-    if (savedMaxTokens) setMaxTokens(parseInt(savedMaxTokens));
-
-    checkHealth()
-      .then((info) => setRuntimeLlm(info))
-      .catch(() => setRuntimeLlm(null));
-  }, []);
-
-  // 保存配置
-  const handleSave = async () => {
-    if (apiMode === 'local' && !apiKey.trim()) {
-      setMessage({ type: 'error', text: '本地 API 模式下请输入 API Key' });
-      return;
-    }
-
-    setSaving(true);
-    setMessage(null);
-
-    try {
-      localStorage.setItem('sparklaw_api_mode', apiMode);
-      localStorage.setItem('sparklaw_api_key', apiKey);
-      localStorage.setItem('sparklaw_base_url', baseUrl);
-      localStorage.setItem('sparklaw_model', model);
-      localStorage.setItem('sparklaw_temperature', temperature.toString());
-      localStorage.setItem('sparklaw_max_tokens', maxTokens.toString());
-
-      // 若本地模式，用新 key 请求健康接口以显示正确模型
-      if (apiMode === 'local' && apiKey.trim()) {
-        try {
-          const resolvedBase = (await import('@/lib/api')).getApiBaseUrl();
-          const hdrs: HeadersInit = {
-            'Content-Type': 'application/json',
-            'X-API-Key': apiKey.trim(),
-          };
-          if (model.trim()) hdrs['X-API-Model'] = model.trim();
-          const resp = await fetch(`${resolvedBase}/api/health`, { headers: hdrs });
-          if (resp.ok) {
-            const info = (await resp.json()) as import('@/lib/api').HealthResponse;
-            setRuntimeLlm(info);
-          }
-        } catch {
-          // ignore health refresh error
-        }
-      } else {
-        const info = await checkHealth();
-        setRuntimeLlm(info);
-      }
-      setMessage({ type: 'success', text: '配置已保存！已切换至' + (apiMode === 'local' ? '本地' : '云端') + '模式。' });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : '保存失败';
-      setMessage({ type: 'error', text: `保存失败：${message}` });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // 清除所有历史记录
-  const handleClearHistory = () => {
-    sessions.forEach(session => {
-      useChatStore.getState().deleteSession(session.id);
-    });
-    setShowClearConfirm(false);
-    setMessage({ type: 'success', text: '所有历史记录已清除' });
-  };
-
-  // 脱敏显示 API Key
-  const maskApiKey = (key: string) => {
-    if (!key || key.length < 8) return key;
-    return `${key.slice(0, 3)}***...***${key.slice(-3)}`;
-  };
-
-  // 预设配置
-  const presets = [
-    {
-      name: 'Groq',
-      baseUrl: 'https://api.groq.com/openai/v1',
-      model: 'llama-3.1-70b-versatile',
-      description: '免费、快速、强大',
-    },
-    {
-      name: 'DeepSeek',
-      baseUrl: 'https://api.deepseek.com/v1',
-      model: 'deepseek-chat',
-      description: '国内访问快，价格便宜',
-    },
-    {
-      name: 'OpenAI',
-      baseUrl: 'https://api.openai.com/v1',
-      model: 'gpt-4o-mini',
-      description: '经典选择',
-    },
-  ];
-
-  const sections = [
-    { id: 'general' as SettingSection, label: '通用', icon: User },
-    { id: 'model' as SettingSection, label: '模型配置', icon: Sliders },
-    { id: 'appearance' as SettingSection, label: '外观', icon: Palette },
-  ];
+  function clearHistory() {
+    if (!window.confirm(`确定清除 ${sessions.length} 条本地对话记录吗？`)) return;
+    sessions.forEach((session) => deleteSession(session.id));
+  }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* 左侧导航 */}
-      <aside className="w-56 border-r border-border bg-card">
-        <div className="p-4">
-          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            设置
-          </h2>
-          <nav className="space-y-1">
-            {sections.map((section) => (
-              <button
-                key={section.id}
-                onClick={() => setActiveSection(section.id)}
-                className={`
-                  flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-smooth
-                  ${activeSection === section.id
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
-                  }
-                `}
-              >
-                <section.icon size={16} />
-                {section.label}
-              </button>
-            ))}
+    <div className="min-h-full bg-[#F7F9FC] text-slate-900 dark:bg-[#0B0D14] dark:text-slate-100">
+      <div className="mx-auto flex max-w-6xl gap-8 px-8 py-8">
+        <aside className="w-56 shrink-0">
+          <div className="mb-5">
+            <h1 className="text-2xl font-semibold tracking-normal">设置</h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">偏好保存在当前浏览器。</p>
+          </div>
+          <nav className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setSection('general')}
+              className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition ${
+                section === 'general'
+                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200'
+                  : 'text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-950'
+              }`}
+            >
+              <Settings2 size={16} />
+              通用
+            </button>
+            <button
+              type="button"
+              onClick={() => setSection('appearance')}
+              className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition ${
+                section === 'appearance'
+                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200'
+                  : 'text-slate-600 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-950'
+              }`}
+            >
+              <Palette size={16} />
+              外观
+            </button>
           </nav>
-        </div>
-      </aside>
+        </aside>
 
-      {/* 右侧内容 */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl p-8">
-          {/* 通用设置 */}
-          {activeSection === 'general' && (
+        <main className="min-w-0 flex-1">
+          {section === 'general' && (
             <div className="space-y-6">
-              <div>
-                <h1 className="text-lg font-semibold font-serif">通用</h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  选择普法问答中 SparkLaw 的回答风格和人格特征
-                </p>
-              </div>
-
-              {/* 人格选择 */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium">AI 律师人格</h3>
-                <div className="space-y-2">
-                  {personalities.map((p) => (
+              <section className="rounded-lg border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-950">
+                <h2 className="text-base font-semibold">默认律师人格</h2>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {personalities.map((item) => (
                     <button
-                      key={p.id}
-                      onClick={() => setPersonality(p.id)}
-                      className={`
-                        w-full rounded-lg border p-4 text-left transition-smooth
-                        ${personality === p.id
-                          ? 'border-primary bg-accent ring-2 ring-primary/20'
-                          : 'border-border bg-card hover:bg-accent/50'
-                        }
-                      `}
+                      key={item.value}
+                      type="button"
+                      onClick={() => setPersonality(item.value)}
+                      className={`rounded-lg border p-4 text-left transition ${
+                        personality === item.value
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
+                          : 'border-slate-200 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700'
+                      }`}
                     >
-                      <div className="flex items-start gap-3">
-                        <span className="text-2xl">{p.icon}</span>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className={`text-sm font-medium ${p.color}`}>
-                              {p.name}
-                            </h4>
-                            {personality === p.id && (
-                              <CheckCircle size={14} className="text-primary" />
-                            )}
-                          </div>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {p.description}
-                          </p>
-                        </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium">{item.label}</span>
+                        {personality === item.value && <CheckCircle size={16} className="text-blue-600" />}
                       </div>
+                      <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{item.desc}</p>
                     </button>
                   ))}
                 </div>
-              </div>
+              </section>
 
-              {/* 清除历史记录 */}
-              <div className="border-t border-border pt-6">
-                <h3 className="text-sm font-medium mb-3">数据管理</h3>
-                {!showClearConfirm ? (
-                  <button
-                    onClick={() => setShowClearConfirm(true)}
-                    className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-2 text-sm font-medium text-destructive transition-smooth hover:bg-destructive/20"
-                  >
-                    <Trash2 size={16} />
-                    清除所有历史记录
-                  </button>
-                ) : (
-                  <div className="rounded-lg border border-destructive bg-destructive/10 p-4">
-                    <p className="text-sm text-destructive mb-3">
-                      确定要清除所有 {sessions.length} 条历史记录吗？此操作不可恢复！
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleClearHistory}
-                        className="flex-1 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground transition-smooth hover:bg-destructive/90"
-                      >
-                        确认清除
-                      </button>
-                      <button
-                        onClick={() => setShowClearConfirm(false)}
-                        className="flex-1 rounded-md border border-border bg-card px-4 py-2 text-sm font-medium transition-smooth hover:bg-accent"
-                      >
-                        取消
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* 关于 */}
-              <div className="border-t border-border pt-6">
-                <div className="rounded-lg border border-border bg-card p-4">
-                  <h3 className="text-sm font-medium">关于 SparkLaw</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    版本：1.0.0
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    开源智能法律助手
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 模型配置 */}
-          {activeSection === 'model' && (
-            <div className="space-y-6">
-              <div>
-                <h1 className="text-lg font-semibold font-serif">模型配置</h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  配置 LLM API 和模型参数
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-                <div className="flex items-center justify-between">
+              <section className="rounded-lg border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-950">
+                <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="text-sm font-medium text-foreground">API 来源模式</p>
-                    <p className="text-xs text-muted-foreground">
-                      云端 = 使用服务端 .env（默认 Groq）；本地 = 使用你在浏览器里填写的 Key/BaseURL/模型
+                    <h2 className="text-base font-semibold">本地对话记录</h2>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                      当前浏览器保存了 {sessions.length} 条对话。
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setApiMode((prev) => (prev === 'cloud' ? 'local' : 'cloud'))}
-                    className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent transition-smooth"
+                    onClick={clearHistory}
+                    disabled={sessions.length === 0}
+                    className="rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30"
                   >
-                    {apiMode === 'cloud' ? <Cloud size={14} /> : <Laptop size={14} />}
-                    当前：{apiMode === 'cloud' ? '云端' : '本地'}（点击切换）
+                    清除记录
                   </button>
                 </div>
+              </section>
+            </div>
+          )}
 
-                <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-800/50 dark:bg-blue-950/30 dark:text-blue-200">
-                  {apiMode === 'local' && apiKey ? (
-                    <>
-                      当前生效：<span className="font-semibold text-green-700 dark:text-green-300 ml-1">本地模式</span>
-                      <span className="font-mono ml-2">{model || runtimeLlm?.llm_model || '未知'}</span>
-                      <span className="ml-2 opacity-60">（浏览器本地 Key 优先）</span>
-                    </>
-                  ) : (
-                    <>
-                      服务端当前模型：
-                      <span className="font-mono ml-1">{runtimeLlm?.llm_model || '未知'}</span>
-                      <span className="ml-2 opacity-80">(mode: {runtimeLlm?.llm_mode || 'unknown'})</span>
-                    </>
-                  )}
+          {section === 'appearance' && (
+            <div className="space-y-6">
+              <section className="rounded-lg border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-950">
+                <h2 className="text-base font-semibold">主题</h2>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {themes.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.value}
+                        type="button"
+                        onClick={() => setTheme(item.value)}
+                        className={`flex items-center justify-between rounded-lg border p-4 text-left transition ${
+                          theme === item.value
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
+                            : 'border-slate-200 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2 text-sm font-medium">
+                          <Icon size={16} />
+                          {item.label}
+                        </span>
+                        {theme === item.value && <CheckCircle size={16} className="text-blue-600" />}
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
+              </section>
 
-              <div className="space-y-4">
-                {/* API Key */}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    API Key
-                  </label>
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="输入你的 API Key"
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-smooth"
-                  />
-                  {apiKey && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      当前：{maskApiKey(apiKey)}
-                    </p>
-                  )}
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    你的 API Key 将保存在浏览器本地，不会上传到服务器
-                  </p>
-                </div>
-
-                {/* Base URL */}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    API Base URL
-                  </label>
-                  <input
-                    type="text"
-                    value={baseUrl}
-                    onChange={(e) => setBaseUrl(e.target.value)}
-                    placeholder="https://api.groq.com/openai/v1"
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-smooth"
-                  />
-                </div>
-
-                {/* Model */}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    模型名称
-                  </label>
-                  <input
-                    type="text"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    placeholder="llama-3.1-70b-versatile"
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-smooth"
-                  />
-                </div>
-
-                {/* Temperature */}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Temperature（创作随机性）
-                  </label>
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.1"
-                      value={temperature}
-                      onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                      className="flex-1"
-                    />
-                    <span className="text-sm font-mono text-foreground w-12 text-right">
-                      {temperature.toFixed(1)}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    0 = 严谨精确，1 = 创意发散
-                  </p>
-                </div>
-
-                {/* Max Tokens */}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Max Tokens（最大输出长度）
-                  </label>
-                  <input
-                    type="number"
-                    value={maxTokens}
-                    onChange={(e) => setMaxTokens(parseInt(e.target.value))}
-                    placeholder="2048"
-                    min="512"
-                    max="8192"
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-smooth"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    推荐：2048-4096
-                  </p>
-                </div>
-
-                {/* 保存按钮 */}
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-smooth hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      保存中...
-                    </>
-                  ) : (
-                    <>
-                      <Save size={16} />
-                      保存配置
-                    </>
-                  )}
-                </button>
-
-                {/* 消息提示 */}
-                {message && (
-                  <div
-                    className={`rounded-md p-3 flex items-start gap-2 text-sm ${
-                      message.type === 'success'
-                        ? 'bg-green-50 text-green-900 border border-green-200 dark:bg-green-950/30 dark:text-green-200 dark:border-green-800/50'
-                        : 'bg-red-50 text-red-900 border border-red-200 dark:bg-red-950/30 dark:text-red-200 dark:border-red-800/50'
-                    }`}
-                  >
-                    {message.type === 'success' ? (
-                      <CheckCircle size={16} className="mt-0.5 flex-shrink-0 text-green-600 dark:text-green-400" />
-                    ) : (
-                      <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-red-600 dark:text-red-400" />
-                    )}
-                    <p>{message.text}</p>
-                  </div>
-                )}
-              </div>
-
-              {/* 预设配置 */}
-              <div className="border-t border-border pt-6">
-                <h3 className="text-sm font-medium mb-3">快速配置</h3>
-                <div className="grid grid-cols-1 gap-2">
-                  {presets.map((preset) => (
+              <section className="rounded-lg border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-950">
+                <h2 className="flex items-center gap-2 text-base font-semibold">
+                  <Type size={17} />
+                  字体大小
+                </h2>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {fontSizes.map((item) => (
                     <button
-                      key={preset.name}
-                      onClick={() => {
-                        setBaseUrl(preset.baseUrl);
-                        setModel(preset.model);
-                      }}
-                      className="rounded-md border border-border bg-card p-3 text-left transition-smooth hover:bg-accent"
+                      key={item.value}
+                      type="button"
+                      onClick={() => ui.setFontSize(item.value)}
+                      className={`rounded-lg border p-4 text-left transition ${
+                        ui.settings.fontSize === item.value
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
+                          : 'border-slate-200 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700'
+                      }`}
                     >
                       <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="text-sm font-medium text-foreground">{preset.name}</h4>
-                          <p className="text-xs text-muted-foreground">{preset.description}</p>
-                        </div>
+                        <span className="font-medium">{item.label}</span>
+                        {ui.settings.fontSize === item.value && <CheckCircle size={16} className="text-blue-600" />}
                       </div>
+                      <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{item.desc}</p>
                     </button>
                   ))}
                 </div>
-              </div>
+              </section>
 
-              {/* 使用说明 */}
-              <div className="rounded-md border border-blue-200 bg-blue-50 p-4 dark:border-blue-800/50 dark:bg-blue-950/30">
-                <h4 className="text-sm font-medium text-blue-900 dark:text-blue-200 mb-2">
-                  💡 使用说明
-                </h4>
-                <ul className="space-y-1 text-xs text-blue-800 dark:text-blue-200">
-                  <li>• Groq：免费且快速，推荐使用</li>
-                  <li>• DeepSeek：国内访问快，价格便宜</li>
-                  <li>• OpenAI：需要国际网络访问</li>
-                </ul>
-              </div>
+              <section className="rounded-lg border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-950">
+                <h2 className="text-base font-semibold">界面密度</h2>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {densities.map((item) => (
+                    <button
+                      key={item.value}
+                      type="button"
+                      onClick={() => ui.setDensity(item.value)}
+                      className={`rounded-lg border p-4 text-left transition ${
+                        ui.settings.density === item.value
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30'
+                          : 'border-slate-200 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">{item.label}</span>
+                        {ui.settings.density === item.value && <CheckCircle size={16} className="text-blue-600" />}
+                      </div>
+                      <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{item.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-950">
+                <h2 className="flex items-center gap-2 text-base font-semibold">
+                  <Zap size={17} />
+                  动效
+                </h2>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => ui.setAnimationsEnabled(!ui.settings.animationsEnabled)}
+                    className="flex items-center justify-between rounded-lg border border-slate-200 p-4 text-left transition hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700"
+                  >
+                    <span>
+                      <span className="block font-medium">界面动画</span>
+                      <span className="mt-1 block text-sm text-slate-500 dark:text-slate-400">控制过渡和淡入效果。</span>
+                    </span>
+                    <span className={`h-5 w-10 rounded-full p-0.5 transition ${ui.settings.animationsEnabled ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                      <span className={`block h-4 w-4 rounded-full bg-white transition ${ui.settings.animationsEnabled ? 'translate-x-5' : ''}`} />
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => ui.setFireEffectEnabled(!ui.settings.fireEffectEnabled)}
+                    className="flex items-center justify-between rounded-lg border border-slate-200 p-4 text-left transition hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700"
+                  >
+                    <span>
+                      <span className="block font-medium">Logo 特效</span>
+                      <span className="mt-1 block text-sm text-slate-500 dark:text-slate-400">控制首页和标识上的动态效果。</span>
+                    </span>
+                    <span className={`h-5 w-10 rounded-full p-0.5 transition ${ui.settings.fireEffectEnabled ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                      <span className={`block h-4 w-4 rounded-full bg-white transition ${ui.settings.fireEffectEnabled ? 'translate-x-5' : ''}`} />
+                    </span>
+                  </button>
+                </div>
+              </section>
             </div>
           )}
-
-          {/* 外观设置 */}
-          {activeSection === 'appearance' && (
-            <div className="space-y-6">
-              <div>
-                <h1 className="text-lg font-semibold font-serif">外观</h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  自定义界面主题和显示设置
-                </p>
-              </div>
-
-              <div className="space-y-6">
-                {/* 主题选择 */}
-                <div>
-                  <h3 className="text-sm font-medium mb-3">主题</h3>
-                  <div className="grid grid-cols-3 gap-3">
-                    <button
-                      onClick={() => setTheme('light')}
-                      className={`group relative rounded-lg border-2 p-4 transition-smooth hover:border-primary ${
-                        theme === 'light' ? 'border-primary bg-accent' : 'border-border bg-card'
-                      }`}
-                    >
-                      <div className="mb-3 flex h-16 items-center justify-center rounded-md bg-white border border-gray-200">
-                        <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-500"></div>
-                      </div>
-                      <p className="text-center text-sm font-medium text-foreground">浅色</p>
-                      {theme === 'light' && (
-                        <div className="absolute top-2 right-2">
-                          <CheckCircle size={16} className="text-primary" />
-                        </div>
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => setTheme('dark')}
-                      className={`group relative rounded-lg border-2 p-4 transition-smooth hover:border-primary ${
-                        theme === 'dark' ? 'border-primary bg-accent' : 'border-border bg-card'
-                      }`}
-                    >
-                      <div className="mb-3 flex h-16 items-center justify-center rounded-md bg-slate-900">
-                        <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-400"></div>
-                      </div>
-                      <p className="text-center text-sm font-medium text-foreground">深色</p>
-                      {theme === 'dark' && (
-                        <div className="absolute top-2 right-2">
-                          <CheckCircle size={16} className="text-primary" />
-                        </div>
-                      )}
-                    </button>
-
-                    <button
-                      onClick={() => setTheme('system')}
-                      className={`group relative rounded-lg border-2 p-4 transition-smooth hover:border-primary ${
-                        theme === 'system' ? 'border-primary bg-accent' : 'border-border bg-card'
-                      }`}
-                    >
-                      <div className="mb-3 flex h-16 items-center justify-center rounded-md bg-gradient-to-r from-white via-gray-400 to-slate-900">
-                        <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-500"></div>
-                      </div>
-                      <p className="text-center text-sm font-medium text-foreground">跟随系统</p>
-                      {theme === 'system' && (
-                        <div className="absolute top-2 right-2">
-                          <CheckCircle size={16} className="text-primary" />
-                        </div>
-                      )}
-                    </button>
-                  </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    也可以使用侧边栏底部的主题切换按钮（快速切换浅色/深色）
-                  </p>
-                </div>
-
-                {/* 字体大小 */}
-                <div>
-                  <h3 className="text-sm font-medium mb-3">字体大小</h3>
-                  <div className="space-y-2">
-                    <button 
-                      onClick={() => setFontSize('small')}
-                      className={`w-full rounded-lg border-2 p-3 text-left transition-smooth ${
-                        settings.fontSize === 'small' 
-                          ? 'border-primary bg-accent' 
-                          : 'border-border bg-card hover:bg-accent'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-foreground">小</p>
-                          <p className="text-xs text-muted-foreground">紧凑显示，适合小屏幕或显示更多内容</p>
-                          <p className="text-xs text-muted-foreground mt-1">基准：12px，按钮/输入框：11px</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground font-mono">12px</span>
-                          {settings.fontSize === 'small' && (
-                            <CheckCircle size={16} className="text-primary" />
-                          )}
-                        </div>
-                      </div>
-                    </button>
-
-                    <button 
-                      onClick={() => setFontSize('medium')}
-                      className={`w-full rounded-lg border-2 p-3 text-left transition-smooth ${
-                        settings.fontSize === 'medium' 
-                          ? 'border-primary bg-accent' 
-                          : 'border-border bg-card hover:bg-accent'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-foreground">中（推荐）</p>
-                          <p className="text-xs text-muted-foreground">平衡的阅读体验，适合大多数场景</p>
-                          <p className="text-xs text-muted-foreground mt-1">基准：14px，按钮/输入框：14px</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground font-mono">14px</span>
-                          {settings.fontSize === 'medium' && (
-                            <CheckCircle size={16} className="text-primary" />
-                          )}
-                        </div>
-                      </div>
-                    </button>
-
-                    <button 
-                      onClick={() => setFontSize('large')}
-                      className={`w-full rounded-lg border-2 p-3 text-left transition-smooth ${
-                        settings.fontSize === 'large' 
-                          ? 'border-primary bg-accent' 
-                          : 'border-border bg-card hover:bg-accent'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-foreground">大</p>
-                          <p className="text-xs text-muted-foreground">舒适阅读，适合大屏幕或视力较弱用户</p>
-                          <p className="text-xs text-muted-foreground mt-1">基准：16px，按钮/输入框：16px</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground font-mono">16px</span>
-                          {settings.fontSize === 'large' && (
-                            <CheckCircle size={16} className="text-primary" />
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    💡 字体大小会影响所有文字、按钮、输入框等元素，立即生效
-                  </p>
-                </div>
-
-                {/* 界面密度 */}
-                <div>
-                  <h3 className="text-sm font-medium mb-3">界面密度</h3>
-                  <div className="space-y-2">
-                    <button 
-                      onClick={() => setDensity('compact')}
-                      className={`w-full rounded-lg border-2 p-3 text-left transition-smooth ${
-                        settings.density === 'compact' 
-                          ? 'border-primary bg-accent' 
-                          : 'border-border bg-card hover:bg-accent'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-foreground">紧凑</p>
-                          <p className="text-xs text-muted-foreground">更多内容，更少空白，适合小屏幕</p>
-                          <p className="text-xs text-muted-foreground mt-1">间距：0.5rem，按钮内边距减小</p>
-                        </div>
-                        {settings.density === 'compact' && (
-                          <CheckCircle size={16} className="text-primary" />
-                        )}
-                      </div>
-                    </button>
-
-                    <button 
-                      onClick={() => setDensity('standard')}
-                      className={`w-full rounded-lg border-2 p-3 text-left transition-smooth ${
-                        settings.density === 'standard' 
-                          ? 'border-primary bg-accent' 
-                          : 'border-border bg-card hover:bg-accent'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-foreground">标准（推荐）</p>
-                          <p className="text-xs text-muted-foreground">平衡的视觉体验，适合大多数场景</p>
-                          <p className="text-xs text-muted-foreground mt-1">间距：1rem，默认内边距</p>
-                        </div>
-                        {settings.density === 'standard' && (
-                          <CheckCircle size={16} className="text-primary" />
-                        )}
-                      </div>
-                    </button>
-
-                    <button 
-                      onClick={() => setDensity('relaxed')}
-                      className={`w-full rounded-lg border-2 p-3 text-left transition-smooth ${
-                        settings.density === 'relaxed' 
-                          ? 'border-primary bg-accent' 
-                          : 'border-border bg-card hover:bg-accent'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-foreground">宽松</p>
-                          <p className="text-xs text-muted-foreground">更多空白，更舒适，适合大屏幕</p>
-                          <p className="text-xs text-muted-foreground mt-1">间距：1.5rem，按钮内边距增大</p>
-                        </div>
-                        {settings.density === 'relaxed' && (
-                          <CheckCircle size={16} className="text-primary" />
-                        )}
-                      </div>
-                    </button>
-                  </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    💡 界面密度会影响按钮、卡片、间距等元素，立即生效
-                  </p>
-                </div>
-
-                {/* 动画效果 */}
-                <div>
-                  <h3 className="text-sm font-medium mb-3">动画效果</h3>
-                  <div className="rounded-lg border border-border bg-card p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">启用动画</p>
-                        <p className="text-xs text-muted-foreground">包括过渡、淡入淡出等效果</p>
-                      </div>
-                      <button
-                        onClick={() => setAnimationsEnabled(!settings.animationsEnabled)}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          settings.animationsEnabled ? 'bg-primary' : 'bg-muted'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                            settings.animationsEnabled ? 'translate-x-5' : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    关闭动画可以提升性能
-                  </p>
-                </div>
-
-                {/* 火焰效果 */}
-                <div>
-                  <h3 className="text-sm font-medium mb-3">特效</h3>
-                  <div className="rounded-lg border border-border bg-card p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">火焰天秤效果 🔥⚖️</p>
-                        <p className="text-xs text-muted-foreground">在 Logo 上显示动态火焰效果</p>
-                      </div>
-                      <button
-                        onClick={() => setFireEffectEnabled(!settings.fireEffectEnabled)}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          settings.fireEffectEnabled ? 'bg-primary' : 'bg-muted'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
-                            settings.fireEffectEnabled ? 'translate-x-5' : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 预览 */}
-                <div className="border-t border-border pt-6">
-                  <h3 className="text-sm font-medium mb-3">实时预览</h3>
-                  <div className="rounded-lg border border-border bg-card p-6">
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-legal shadow-lg">
-                        <span className="text-2xl">⚖️</span>
-                      </div>
-                      <div>
-                        <h4 className="font-semibold text-foreground">SparkLaw 智能法律助手</h4>
-                        <p className="text-muted-foreground">开源 · 免费 · 强大</p>
-                      </div>
-                    </div>
-                    <div className="rounded-md border border-border bg-background p-4 space-y-3">
-                      <div>
-                        <h3 className="font-medium text-foreground mb-2">当前设置</h3>
-                        <div className="space-y-1 text-muted-foreground">
-                          <p>• 字体大小：{settings.fontSize === 'small' ? '小 (12px)' : settings.fontSize === 'medium' ? '中 (14px)' : '大 (16px)'}</p>
-                          <p>• 界面密度：{settings.density === 'compact' ? '紧凑' : settings.density === 'standard' ? '标准' : '宽松'}</p>
-                          <p>• 动画效果：{settings.animationsEnabled ? '已启用' : '已禁用'}</p>
-                          <p>• 火焰特效：{settings.fireEffectEnabled ? '已启用' : '已禁用'}</p>
-                        </div>
-                      </div>
-                      <div className="border-t border-border pt-3">
-                        <p className="text-foreground">
-                          这是一段示例文本，用于预览当前的字体大小和界面密度设置。您可以在上方调整设置，实时查看效果变化。
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-smooth hover:bg-primary/90 no-density">
-                          示例按钮
-                        </button>
-                        <input 
-                          type="text" 
-                          placeholder="示例输入框" 
-                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground"
-                          readOnly
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    💡 预览区域会实时反映您的设置变化
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

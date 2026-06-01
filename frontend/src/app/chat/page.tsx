@@ -230,25 +230,13 @@ export default function ChatPage() {
     let errorContent = '';
 
     try {
-      const apiMode = (localStorage.getItem('sparklaw_api_mode') as 'cloud' | 'local' | null) || 'cloud';
-      const apiKey = localStorage.getItem('sparklaw_api_key');
-      const baseUrl = localStorage.getItem('sparklaw_base_url');
-      const model = localStorage.getItem('sparklaw_model');
-      const temperature = localStorage.getItem('sparklaw_temperature');
-      const maxTokens = localStorage.getItem('sparklaw_max_tokens');
-
       const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (apiMode === 'local' && apiKey) headers['X-API-Key'] = apiKey;
-      if (apiMode === 'local' && baseUrl) headers['X-API-Base-URL'] = baseUrl;
-      if (apiMode === 'local' && model) headers['X-API-Model'] = model;
-      if (apiMode === 'local' && temperature) headers['X-API-Temperature'] = temperature;
-      if (apiMode === 'local' && maxTokens) headers['X-API-Max-Tokens'] = maxTokens;
-
       const resolvedBase = getApiBaseUrl();
 
       const resp = await fetch(`${resolvedBase}/api/legal/stream`, {
         method: 'POST',
         headers,
+        credentials: 'include',
         body: JSON.stringify({
           question: messageText,
           session_id: sessionId,

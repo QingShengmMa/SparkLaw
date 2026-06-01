@@ -1,11 +1,12 @@
 """
 法律 Agent 服务 - Part 1: 初始化与核心方法
+LangGraph 1.0+ 兼容版本
 """
 
 import asyncio
 from typing import Dict, List, Optional, Literal, Any, AsyncIterator
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from typing_extensions import TypedDict, Annotated
@@ -73,7 +74,8 @@ class LegalAgentService:
             self.sessions: Dict[str, List[Dict]] = {}
             self.system_prompt = self._get_system_prompt()
             self.llm_with_tools = self.llm.bind_tools(self.tools)
-            self.tool_node = ToolNode(self.tools)
+            # LangGraph 1.0+: ToolNode 需要显式指定 messages_key
+            self.tool_node = ToolNode(self.tools, messages_key="messages")
             self.checkpointer = self._create_checkpointer()
             self.graph = self._build_react_graph(self.llm_with_tools)
             app_logger.info("✅ 法律 Agent 服务初始化完成")
@@ -110,13 +112,19 @@ class LegalAgentService:
         """
         检索法律上下文：优先从法律条文库（legal_corpus）检索，
         若法律库为空则回退到合同库 retrieve_clauses。
+        
+        ⚠️ 防幻觉机制：如果检索结果为空，返回明确标记而非空字符串
         """
         try:
             results = await self.rag_service.retrieve_law(query=question, top_k=top_k)
             if not results:
                 results = await self.rag_service.retrieve_clauses(query=question, top_k=top_k)
-            if not results:
-                return ""
+            
+            # ✅ 核心防幻觉逻辑：检索为空时返回明确标记
+            if not results or len(results) == 0:
+                app_logger.warning(f"⚠️ 知识库未检索到相关法条: {question[:50]}...")
+                return "[知识库未检索到相关法条，请谨慎回答或建议用户咨询专业律师]"
+            
             return "\n".join(
                 f"[{i}] {item.get('text', '')[:300]}"
                 for i, item in enumerate(results, 1)
@@ -124,24 +132,43 @@ class LegalAgentService:
             )
         except Exception as e:
             app_logger.warning(f"法律上下文检索失败: {str(e)}")
-            return ""
+            return "[知识库检索异常，请谨慎回答或建议用户咨询专业律师]"
 
     def _create_checkpointer(self):
+        """
+        创建 Checkpointer（LangGraph 1.0+ 兼容）
+        
+        优先级：PostgreSQL > InMemorySaver
+        注意：LangGraph 1.0+ 已废弃 Redis Checkpointer
+        """
         try:
             from langgraph.checkpoint.base import BaseCheckpointSaver
-            from langgraph.checkpoint.memory import MemorySaver
+            from langgraph.checkpoint.memory import InMemorySaver
+            
+            # 尝试使用 PostgreSQL Checkpointer（生产推荐）
             try:
-                from langgraph.checkpoint.redis.aio import AsyncRedisSaver
-
-                candidate = AsyncRedisSaver.from_conn_string(settings.REDIS_URL)
-                if not isinstance(candidate, BaseCheckpointSaver):
-                    raise TypeError(f"Invalid redis checkpointer type: {type(candidate).__name__}")
-
-                app_logger.info(f"✅ LangGraph Checkpointer 使用 Redis: {settings.REDIS_URL}")
-                return candidate
-            except Exception as redis_err:
-                app_logger.warning(f"⚠️ Redis Checkpointer 不可用，回退 MemorySaver: {str(redis_err)}")
-                return MemorySaver()
+                from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+                
+                # 检查是否配置了 PostgreSQL URL
+                postgres_url = getattr(settings, 'POSTGRES_URL', None)
+                if postgres_url:
+                    candidate = AsyncPostgresSaver.from_conn_string(postgres_url)
+                    if not isinstance(candidate, BaseCheckpointSaver):
+                        raise TypeError(f"Invalid postgres checkpointer type: {type(candidate).__name__}")
+                    
+                    app_logger.info(f"✅ LangGraph Checkpointer 使用 PostgreSQL: {postgres_url}")
+                    return candidate
+                else:
+                    app_logger.info("⚠️ 未配置 POSTGRES_URL，回退到 InMemorySaver")
+                    return InMemorySaver()
+                    
+            except ImportError:
+                app_logger.warning("⚠️ langgraph-checkpoint-postgres 未安装，回退 InMemorySaver")
+                return InMemorySaver()
+            except Exception as pg_err:
+                app_logger.warning(f"⚠️ PostgreSQL Checkpointer 不可用，回退 InMemorySaver: {str(pg_err)}")
+                return InMemorySaver()
+                
         except Exception as err:
             app_logger.error(f"❌ Checkpointer 初始化失败: {str(err)}")
             return None
@@ -159,9 +186,12 @@ class LegalAgentService:
 
         workflow.add_node("agent", agent_node)
         workflow.add_node("tools", self._safe_tools_node)
-        workflow.set_entry_point("agent")
+        
+        # LangGraph 1.0+: 使用 START 替代 set_entry_point
+        workflow.add_edge(START, "agent")
         workflow.add_conditional_edges("agent", self._should_continue, {"tools": "tools", "end": END})
         workflow.add_edge("tools", "agent")
+        
         return workflow.compile(checkpointer=self.checkpointer) if self.checkpointer else workflow.compile()
 
     async def _agent_node(self, state: LegalAgentGraphState, llm_with_tools) -> Dict[str, Any]:

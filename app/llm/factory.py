@@ -3,11 +3,12 @@ LLM 工厂模式实现
 根据配置创建不同的 LLM 实例
 """
 
-from typing import Union, Optional
+from typing import Optional, Union
 from langchain_community.chat_models import ChatOllama
 from langchain_openai import ChatOpenAI
 from app.core.config import settings
 from app.core.logger import app_logger
+from app.llm.routed_chat_model import ProviderConfig, RoutedChatModel
 
 
 class LLMFactory:
@@ -25,7 +26,7 @@ class LLMFactory:
         model: str = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None
-    ) -> Union[ChatOllama, ChatOpenAI]:
+    ) -> Union[ChatOllama, ChatOpenAI, RoutedChatModel]:
         try:
             if api_key:
                 app_logger.info(f"✅ 使用自定义配置创建 LLM: model={model or settings.OPENAI_MODEL}")
@@ -38,15 +39,17 @@ class LLMFactory:
                 )
 
             if settings.LLM_MODE == "cloud":
-                if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY == "your_groq_api_key_here":
+                providers = LLMFactory._cloud_providers()
+                if not providers:
                     app_logger.warning("⚠️  未配置有效的 API Key，尝试使用本地 Ollama")
                     return LLMFactory._create_local_llm()
 
-                app_logger.info(f"✅ 创建云端 LLM 实例: {settings.OPENAI_MODEL}")
-                return ChatOpenAI(
-                    api_key=settings.OPENAI_API_KEY,
-                    base_url=settings.OPENAI_BASE_URL,
-                    model=settings.OPENAI_MODEL,
+                app_logger.info(
+                    "✅ 创建云端 LLM 路由: "
+                    + " -> ".join(f"{item.name}:{item.model}" for item in providers)
+                )
+                return RoutedChatModel(
+                    providers,
                     temperature=temperature if temperature is not None else settings.OPENAI_TEMPERATURE,
                     max_tokens=max_tokens if max_tokens is not None else settings.OPENAI_MAX_TOKENS,
                 )
@@ -79,6 +82,46 @@ class LLMFactory:
         except Exception as e:
             app_logger.error(f"❌ 无法连接到 Ollama 服务 ({settings.OLLAMA_BASE_URL}): {str(e)}")
             raise
+
+    @staticmethod
+    def _cloud_providers() -> list[ProviderConfig]:
+        configured = {
+            "groq": ProviderConfig(
+                name="groq",
+                api_key=settings.GROQ_API_KEY or "",
+                base_url=settings.GROQ_BASE_URL,
+                model=settings.GROQ_MODEL,
+                input_cost_per_1m=settings.GROQ_INPUT_COST_PER_1M,
+                output_cost_per_1m=settings.GROQ_OUTPUT_COST_PER_1M,
+            ),
+            "deepseek": ProviderConfig(
+                name="deepseek",
+                api_key=settings.DEEPSEEK_API_KEY or "",
+                base_url=settings.DEEPSEEK_BASE_URL,
+                model=settings.DEEPSEEK_MODEL,
+                input_cost_per_1m=settings.DEEPSEEK_INPUT_COST_PER_1M,
+                output_cost_per_1m=settings.DEEPSEEK_OUTPUT_COST_PER_1M,
+            ),
+        }
+
+        providers: list[ProviderConfig] = []
+        for name in settings.get_cloud_provider_names():
+            provider = configured.get(name)
+            if provider and provider.api_key:
+                providers.append(provider)
+
+        if not providers and settings.OPENAI_API_KEY:
+            providers.append(
+                ProviderConfig(
+                    name="openai-compatible",
+                    api_key=settings.OPENAI_API_KEY,
+                    base_url=settings.OPENAI_BASE_URL,
+                    model=settings.OPENAI_MODEL,
+                    input_cost_per_1m=0.0,
+                    output_cost_per_1m=0.0,
+                )
+            )
+        return providers
 
     @staticmethod
     def get_llm_info() -> dict:

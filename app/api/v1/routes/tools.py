@@ -6,9 +6,10 @@ import json
 import re
 from typing import Optional, Any
 from celery.result import AsyncResult
-from fastapi import APIRouter, HTTPException, Header, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from app.auth.dependencies import require_usage_context
 from app.workers.celery_app import celery_app
 from app.core.logger import app_logger
 from app.services.contract_reviewer import get_contract_reviewer
@@ -25,7 +26,11 @@ from app.models.response import (
     DebateResponse,
 )
 
-router = APIRouter(prefix="/analysis", tags=["智能分析"])
+router = APIRouter(
+    prefix="/analysis",
+    tags=["智能分析"],
+    dependencies=[Depends(require_usage_context)],
+)
 
 
 class DebateRequest(BaseModel):
@@ -174,9 +179,6 @@ async def get_template(template_id: str):
 @router.post("/review/stream", summary="合同审查 SSE 流式（无需 Celery/Redis）")
 async def review_contract_stream(
     request: ContractReviewStreamRequest,
-    x_api_key: Optional[str] = Header(default=None),
-    x_api_base_url: Optional[str] = Header(default=None),
-    x_api_model: Optional[str] = Header(default=None),
 ):
     """
     SSE 流式合同审查接口。
@@ -341,12 +343,7 @@ async def debate(request: DebateRequest):
 @router.post("/debate/court", summary="模拟庭审（流式 SSE）")
 async def court_debate(
     request: CourtRejudgeRequest,
-    x_api_key: Optional[str] = Header(default=None),
-    x_api_base_url: Optional[str] = Header(default=None),
-    x_api_model: Optional[str] = Header(default=None),
 ):
-    _ = (x_api_key, x_api_base_url, x_api_model)
-
     async def generate():
         try:
             agent = get_court_agent()
@@ -379,12 +376,7 @@ async def court_debate(
 @router.post("/debate/court/rejudge", summary="补充证据重新庭审（流式 SSE）")
 async def court_debate_rejudge(
     request: CourtRejudgeRequest,
-    x_api_key: Optional[str] = Header(default=None),
-    x_api_base_url: Optional[str] = Header(default=None),
-    x_api_model: Optional[str] = Header(default=None),
 ):
-    _ = (x_api_key, x_api_base_url, x_api_model)
-
     async def generate():
         try:
             agent = get_court_agent()

@@ -181,6 +181,12 @@ async def run_react_event_stream(
     enable_web_search: bool = False,
     legal_context: str = "",
 ) -> AsyncIterator[Dict[str, Any]]:
+    from app.core.profiler import LLMStreamTimer, E2ETimer
+    _session_id = getattr(thread_id, "__str__", lambda: thread_id or "")() or ""
+    _e2e = E2ETimer(session_id=_session_id)
+    _llm_timer = LLMStreamTimer(session_id=_session_id)
+    _tool_call_count = 0
+
     graph = graph_to_use or self.graph
     initial_state: LegalAgentGraphState = {"messages": messages}
     final_chunks: List[str] = []
@@ -215,6 +221,7 @@ async def run_react_event_stream(
             if not text:
                 continue
 
+            _llm_timer.on_token(text)  # [PERF_LLM]
             think_buffer += text
             segments, think_buffer, in_thinking = _split_think_fragments(think_buffer, in_thinking)
             for kind, content in segments:
@@ -241,6 +248,7 @@ async def run_react_event_stream(
                 yield {"type": "tool_start", "tool_name": tool_name, "input": tool_input}
 
         elif event_type in ("on_tool_end", "on_tool_error"):
+            _tool_call_count += 1  # [PERF_E2E] 累计工具调用次数
             tool_name = evt.get("name") or "unknown_tool"
             output = evt.get("data", {}).get("output") or ""
             if enable_web_search and "search" in tool_name.lower():
@@ -312,6 +320,8 @@ async def run_react_event_stream(
     if not final_answer.strip():
         raise RuntimeError("GUARDRAIL_BLOCKED: 无法生成有效合规回复")
 
+    _llm_timer.finish()          # [PERF_LLM] LLM 流式推理总耗时
+    _e2e.finish(tool_calls=_tool_call_count)  # [PERF_E2E] 端到端总耗时
     yield {"type": "final", "answer": final_answer}
 
 

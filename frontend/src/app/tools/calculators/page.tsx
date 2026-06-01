@@ -10,7 +10,7 @@ import {
   AlertCircle, CheckCircle2, HelpCircle, Zap,
 } from 'lucide-react';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/+$/, '');
 
 type CalcType = 'labor_compensation' | 'litigation_fee' | 'lpr_interest'
   | 'work_injury' | 'traffic_accident' | 'personal_injury' | 'divorce_property'
@@ -292,6 +292,7 @@ function CalcModal({ config, onClose }: { config: CalcConfig; onClose: () => voi
       const resp = await fetch(`${API_BASE}/api/tools/calculator/calculate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ calcType: config.type, params }),
+        credentials: 'include',
       });
       if (!resp.ok) {
         const d = await resp.json().catch(() => ({})) as { detail?: string };

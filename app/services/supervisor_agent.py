@@ -1,9 +1,9 @@
 """
-Supervisor 多智能体架构（主管-打工人）
-- Supervisor: 任务路由与验收
+Supervisor 多智能体架构（主�?打工人）
+- Supervisor: 任务路由与验�?
 - LegalResearcher: 法条检索与法理分析
 - ContractAnalyzer: 合同文本风险识别
-- LitigationStrategist: 诉讼策略与文书草案
+- LitigationStrategist: 诉讼策略与文书草�?
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ import re
 import uuid
 
 from langchain_core.prompts import ChatPromptTemplate
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import END, StateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import START, END, StateGraph
 from langgraph.types import Command, interrupt
 from pydantic import BaseModel, Field
 
@@ -65,11 +65,11 @@ class SupervisorState(TypedDict):
 
 
 class VerdictResult(BaseModel):
-    plaintiff_win_rate: int = Field(..., ge=0, le=100, description="原告胜诉概率，0到100的整数")
-    defendant_win_rate: int = Field(..., ge=0, le=100, description="被告胜诉概率，0到100的整数，必须与原告相加为100")
+    plaintiff_win_rate: int = Field(..., ge=0, le=100, description="原告胜诉概率�?�?00的整�?)
+    defendant_win_rate: int = Field(..., ge=0, le=100, description="被告胜诉概率�?�?00的整数，必须与原告相加为100")
     verdict_text: str = Field(
         ...,
-        description="详细的判决书正文，必须使用 Markdown 格式排版（包含案由、争议焦点、判决逻辑）",
+        description="详细的判决书正文，必须使�?Markdown 格式排版（包含案由、争议焦点、判决逻辑�?,
     )
 
 
@@ -89,9 +89,9 @@ class DebateStreamResult(BaseModel):
 
 
 STRATEGY_INSTRUCTION_MAP: Dict[str, str] = {
-    "aggressive": "你现在的辩论策略是【激进施压】。请主动寻找被告的逻辑漏洞，语言风格锋利、具有压迫感，强调攻势与节奏。",
-    "conservative": "你现在的辩论策略是【死磕法条】。请以保守防御方式作答，严格咬文嚼字，强调程序正义与法条精准适配。",
-    "mediator": "你现在的辩论策略是【商业调解】。请强调合作背景与现实利益，优先提出减少损失、推动共赢和解的方案。",
+    "aggressive": "你现在的辩论策略是【激进施压】。请主动寻找被告的逻辑漏洞，语言风格锋利、具有压迫感，强调攻势与节奏�?,
+    "conservative": "你现在的辩论策略是【死磕法条】。请以保守防御方式作答，严格咬文嚼字，强调程序正义与法条精准适配�?,
+    "mediator": "你现在的辩论策略是【商业调解】。请强调合作背景与现实利益，优先提出减少损失、推动共赢和解的方案�?,
 }
 
 
@@ -107,14 +107,14 @@ def _text_fingerprint(text: str) -> str:
 
 
 class SupervisorDebateAgent:
-    """基于 LangGraph Conditional Edges 的 Supervisor 多智能体。"""
+    """基于 LangGraph Conditional Edges �?Supervisor 多智能体�?""
 
     def __init__(self):
         self.llm = LLMFactory.create_llm()
         self.rag_service = get_rag_service()
         self.checkpointer = self._create_checkpointer()
         self.graph = self._build_graph()
-        app_logger.info("🧠 SupervisorDebateAgent 初始化完成")
+        app_logger.info("🧠 SupervisorDebateAgent 初始化完�?)
 
     def _create_checkpointer(self):
         try:
@@ -128,7 +128,7 @@ class SupervisorDebateAgent:
             return saver
         except Exception as e:
             app_logger.warning(f"SupervisorAgent Redis Checkpointer 不可用，回退 MemorySaver: {str(e)}")
-            return MemorySaver()
+            return InMemorySaver()
 
     async def _setup_async_checkpointer(self, saver) -> None:
         setup = getattr(saver, "setup", None)
@@ -145,7 +145,7 @@ class SupervisorDebateAgent:
         workflow.add_node("Verification_Node", self._verification_node)
         workflow.add_node("HumanJudgeIntervention", self._human_judge_intervention_node)
 
-        workflow.set_entry_point("supervisor")
+        workflow.add_edge(START, "supervisor")
 
         workflow.add_conditional_edges(
             "supervisor",
@@ -204,13 +204,13 @@ class SupervisorDebateAgent:
         return len(result.strip()) >= 120
 
     def _extract_key_points(self, text: str, fallback: str) -> List[str]:
-        """从模型输出中提取最多 3 条可读要点。"""
+        """从模型输出中提取最�?3 条可读要点�?""
         if not text:
             return [fallback]
 
         points: List[str] = []
         for line in text.splitlines():
-            cleaned = line.strip().lstrip("-•1234567890.、 ")
+            cleaned = line.strip().lstrip("-�?234567890.�?")
             if len(cleaned) >= 8 and len(cleaned) <= 80:
                 points.append(cleaned)
             if len(points) >= 3:
@@ -227,7 +227,7 @@ class SupervisorDebateAgent:
 
         verdict_text = (verdict_result.verdict_text or "").strip()
         if not verdict_text:
-            verdict_text = "# 法官综合意见\n\n本院将基于现有证据与法条进行裁判评议。"
+            verdict_text = "# 法官综合意见\n\n本院将基于现有证据与法条进行裁判评议�?
 
         return VerdictResult(
             plaintiff_win_rate=plaintiff,
@@ -241,15 +241,15 @@ class SupervisorDebateAgent:
         defendant_text: str,
         judge_text: str,
     ) -> DebateSummary:
-        """使用结构化 JSON 约束输出双方有利点与法官总结。"""
+        """使用结构�?JSON 约束输出双方有利点与法官总结�?""
         prompt = (
-            "你是法律辩论总结器。请严格输出 JSON 对象，不要输出任何多余文字。"
+            "你是法律辩论总结器。请严格输出 JSON 对象，不要输出任何多余文字�?
             "JSON Schema: {"
             "\"plaintiff_winning_factors\": [\"...\"],"
             "\"defendant_winning_factors\": [\"...\"],"
             "\"judge_summary\": \"...\""
             "}\n"
-            "要求：每个数组给出 3 条完整句子，不得输出半截句。\n\n"
+            "要求：每个数组给�?3 条完整句子，不得输出半截句。\n\n"
             f"原告发言：\n{plaintiff_text}\n\n"
             f"被告发言：\n{defendant_text}\n\n"
             f"法官意见：\n{judge_text}\n"
@@ -270,12 +270,12 @@ class SupervisorDebateAgent:
             start = str(raw).find("{")
             end = str(raw).rfind("}")
             if start == -1 or end == -1:
-                raise ValueError("未返回 JSON 对象")
+                raise ValueError("未返�?JSON 对象")
 
             payload = json.loads(str(raw)[start:end + 1])
             return DebateSummary.model_validate(payload)
         except Exception as e:
-            app_logger.warning(f"结构化总结失败，回退启发式抽取: {str(e)}")
+            app_logger.warning(f"结构化总结失败，回退启发式抽�? {str(e)}")
             return DebateSummary(
                 plaintiff_winning_factors=self._extract_key_points(plaintiff_text, "原告的核心主张仍需补充证据支持"),
                 defendant_winning_factors=self._extract_key_points(defendant_text, "被告的抗辩理由仍需补充事实依据"),
@@ -283,7 +283,7 @@ class SupervisorDebateAgent:
             )
 
     async def _ensure_legal_basis(self, state: SupervisorState) -> str:
-        """在流程初始阶段强制检索真实法条并写入 State。"""
+        """在流程初始阶段强制检索真实法条并写入 State�?""
         existing = (state.get("legal_basis") or "").strip()
         if existing:
             return existing
@@ -301,7 +301,7 @@ class SupervisorDebateAgent:
             legal_lines.append(f"【{article}】{text[:320]}")
 
         if not legal_lines:
-            legal_lines.append("【未检索到条文】请明确说明证据不足，禁止编造法律条款。")
+            legal_lines.append("【未检索到条文】请明确说明证据不足，禁止编造法律条款�?)
 
         return "\n".join(legal_lines)
 
@@ -320,13 +320,13 @@ class SupervisorDebateAgent:
                 continue
             evidence_id = f"evidence_{idx}"
             metadata = item.get("metadata") or {}
-            title = metadata.get("article") or metadata.get("chapter") or f"参考证据 {idx}"
+            title = metadata.get("article") or metadata.get("chapter") or f"参考证�?{idx}"
             evidence_list.append(
                 {
                     "id": evidence_id,
                     "title": str(title),
                     "content": text[:380],
-                    "source": str(metadata.get("source") or metadata.get("law_name") or "RAG检索结果"),
+                    "source": str(metadata.get("source") or metadata.get("law_name") or "RAG检索结�?),
                 }
             )
 
@@ -335,7 +335,7 @@ class SupervisorDebateAgent:
                 {
                     "id": "evidence_1",
                     "title": "证据不足提示",
-                    "content": "未检索到可用法条或合同条款，请在发言中明确证据不足。",
+                    "content": "未检索到可用法条或合同条款，请在发言中明确证据不足�?,
                     "source": "系统提示",
                 }
             )
@@ -351,7 +351,7 @@ class SupervisorDebateAgent:
             "【证据链列表】\n"
             + "\n".join(lines)
             + "\n\n"
-            + "【强制引用格式】当你引用特定法条或证据时，必须在对应句子后追加锚点，格式严格为 [引用:evidence_x]。"
+            + "【强制引用格式】当你引用特定法条或证据时，必须在对应句子后追加锚点，格式严格为 [引用:evidence_x]�?
         )
 
     def _extract_evidence_mentions(self, text: str) -> List[str]:
@@ -392,41 +392,41 @@ class SupervisorDebateAgent:
         opponent_text = "\n".join([f"- {p}" for p in (opponent_points or [])]) or "- 暂无"
         evidence_instruction = self._build_evidence_instructions(evidence_list)
         human_question_context = (
-            f"\n\n【法官（人类）补充追问】\n{human_question}\n请你直接回应该追问，并与已有论证保持一致。"
+            f"\n\n【法官（人类）补充追问】\n{human_question}\n请你直接回应该追问，并与已有论证保持一致�?
             if human_question else ""
         )
 
         if role_key == "plaintiff":
             strategy_instruction = STRATEGY_INSTRUCTION_MAP.get(normalize_strategy(strategy), STRATEGY_INSTRUCTION_MAP["aggressive"])
             system_prompt = (
-                "你现在的身份是【原告律师】。你必须且只能从原告的利益出发进行主张。"
-                "请使用第一人称（如‘我方认为...’）进行表述。"
+                "你现在的身份是【原告律师】。你必须且只能从原告的利益出发进行主张�?
+                "请使用第一人称（如‘我方认�?..’）进行表述�?
                 "严禁以被告或法官口吻发言，严禁替法官下最终判决。\n\n"
-                "【重要】你所有的抗辩理由必须严格基于以下提供的参考法律条文。"
+                "【重要】你所有的抗辩理由必须严格基于以下提供的参考法律条文�?
                 "严禁自行捏造、背诵未提供的法律条款。引用时请明确指出依据的是哪一条。\n\n"
                 f"【策略指令】{strategy_instruction}\n\n"
                 f"{evidence_instruction}"
             )
-            output_rule = "请输出：1) 原告诉请主张 2) 法条依据（逐条引用） 3) 针对被告上一轮观点的反驳。"
+            output_rule = "请输出：1) 原告诉请主张 2) 法条依据（逐条引用�?3) 针对被告上一轮观点的反驳�?
         elif role_key == "defendant":
             system_prompt = (
-                "你现在的身份是【被告律师】。你必须且只能从被告的利益出发进行抗辩。"
-                "请使用第一人称（如‘我方认为...’）进行表述。"
+                "你现在的身份是【被告律师】。你必须且只能从被告的利益出发进行抗辩�?
+                "请使用第一人称（如‘我方认�?..’）进行表述�?
                 "严禁以原告或法官的口吻发言，严禁替法官做出裁判结论。\n\n"
-                "【重要】你所有的抗辩理由必须严格基于以下提供的参考法律条文。"
+                "【重要】你所有的抗辩理由必须严格基于以下提供的参考法律条文�?
                 "严禁自行捏造、背诵未提供的法律条款。引用时请明确指出依据的是哪一条。\n\n"
                 f"{evidence_instruction}"
             )
-            output_rule = "请输出：1) 被告抗辩主张 2) 法条依据（逐条引用） 3) 针对原告上一轮观点的反驳。"
+            output_rule = "请输出：1) 被告抗辩主张 2) 法条依据（逐条引用�?3) 针对原告上一轮观点的反驳�?
         else:
             system_prompt = (
-                "你是本案的【主审法官】。你的职责是归纳双方争议焦点，并基于事实和法律给出最终裁判逻辑。"
+                "你是本案的【主审法官】。你的职责是归纳双方争议焦点，并基于事实和法律给出最终裁判逻辑�?
                 "请使用法官的客观、庄重语气。严禁代入原告或被告立场，严禁情绪化表达。\n\n"
-                "【重要】你的判决逻辑必须严格基于以下提供的参考法律条文。"
+                "【重要】你的判决逻辑必须严格基于以下提供的参考法律条文�?
                 "严禁自行捏造、背诵未提供的法律条款。引用时请明确指出依据的是哪一条。\n\n"
                 f"{evidence_instruction}"
             )
-            output_rule = "请输出：1) 争议焦点归纳 2) 法条适用分析 3) 裁判逻辑结论。"
+            output_rule = "请输出：1) 争议焦点归纳 2) 法条适用分析 3) 裁判逻辑结论�?
 
         prompt = ChatPromptTemplate.from_messages(
             [
@@ -454,14 +454,14 @@ class SupervisorDebateAgent:
         )
 
     async def _supervisor_node(self, state: SupervisorState) -> Dict:
-        # 流程初始阶段强制注入真实法条，供所有角色共享
+        # 流程初始阶段强制注入真实法条，供所有角色共�?
         legal_basis = await self._ensure_legal_basis(state)
         current_turn = int(state.get("current_turn", 0))
         max_turns = int(state.get("max_turns", 2))
 
         # 第一轮一定先由原告发言
         if not state.get("legal_research_result"):
-            note = f"第 {current_turn + 1} 轮：原告律师先行陈述。"
+            note = f"�?{current_turn + 1} 轮：原告律师先行陈述�?
             return {
                 "legal_basis": legal_basis,
                 "next_worker": "LegalResearcher",
@@ -471,7 +471,7 @@ class SupervisorDebateAgent:
 
         # 原告发言后，轮到被告
         if not state.get("contract_analysis_result"):
-            note = f"第 {current_turn + 1} 轮：被告律师进行抗辩。"
+            note = f"�?{current_turn + 1} 轮：被告律师进行抗辩�?
             return {
                 "legal_basis": legal_basis,
                 "next_worker": "ContractAnalyzer",
@@ -482,21 +482,21 @@ class SupervisorDebateAgent:
         # 已完成一轮原被告攻防
         if current_turn + 1 < max_turns:
             next_turn = current_turn + 1
-            note = f"第 {next_turn + 1} 轮反驳开始：原告律师继续围绕上一轮观点反驳。"
+            note = f"�?{next_turn + 1} 轮反驳开始：原告律师继续围绕上一轮观点反驳�?
             return {
                 "legal_basis": legal_basis,
                 "current_turn": next_turn,
                 "next_worker": "LegalResearcher",
                 "supervisor_note": note,
-                # 清空本轮临时槽位，保留双方关键要点用于下一轮互相反驳
+                # 清空本轮临时槽位，保留双方关键要点用于下一轮互相反�?
                 "legal_research_result": "",
                 "contract_analysis_result": "",
                 "messages": [{"role": "supervisor", "content": note}],
             }
 
-        # 轮次达到上限，触发人类法官介入
+        # 轮次达到上限，触发人类法官介�?
         if not state.get("human_question"):
-            note = "辩论轮次已满，等待法官（人类）追问。"
+            note = "辩论轮次已满，等待法官（人类）追问�?
             return {
                 "legal_basis": legal_basis,
                 "next_worker": "HumanJudgeIntervention",
@@ -506,7 +506,7 @@ class SupervisorDebateAgent:
 
         # 人类追问后，交由 AI 法官终局裁判
         if not state.get("litigation_strategy_result"):
-            note = "已收到法官追问，进入最终评议。"
+            note = "已收到法官追问，进入最终评议�?
             return {
                 "legal_basis": legal_basis,
                 "next_worker": "LitigationStrategist",
@@ -518,9 +518,9 @@ class SupervisorDebateAgent:
             "# 法官综合意见\n\n"
             f"{state.get('litigation_strategy_result', '')}\n\n"
             "---\n"
-            "以上结论基于当前案情与已提供信息，仅供诉前分析参考。"
+            "以上结论基于当前案情与已提供信息，仅供诉前分析参考�?
         )
-        note = "综合评议完成，生成最终结论。"
+        note = "综合评议完成，生成最终结论�?
         return {
             "legal_basis": legal_basis,
             "next_worker": "END",
@@ -531,12 +531,12 @@ class SupervisorDebateAgent:
 
     async def _verification_node(self, state: SupervisorState) -> Dict:
         """
-        法务合规稽查节点：核验上一发言 Agent 的观点是否与 laws/evidences 一致。
+        法务合规稽查节点：核验上一发言 Agent 的观点是否与 laws/evidences 一致�?
 
-        规则：
-        1) 若发现捏造法条编号或事实错误，返回 status=rework，并给出明确整改意见。
-        2) 若核验通过，返回 status=pass。
-        3) 为避免死循环，重写最多允许 2 次（由 route 层与 retries 控制）。
+        规则�?
+        1) 若发现捏造法条编号或事实错误，返�?status=rework，并给出明确整改意见�?
+        2) 若核验通过，返�?status=pass�?
+        3) 为避免死循环，重写最多允�?2 次（�?route 层与 retries 控制）�?
         """
         legal_basis = state.get("legal_basis") or await self._ensure_legal_basis(state)
         evidence_list = state.get("evidence_list") or await self._ensure_evidence_list(state)
@@ -551,11 +551,11 @@ class SupervisorDebateAgent:
             [
                 (
                     "system",
-                    "你是一个严苛的【法务合规稽查员】。请严格对比前面 Agent 生成的法律观点与系统中存储的 laws（法条）和 evidences（证据）。"
-                    "检查是否存在：1. 捏造法条编号；2. 事实错误。"
-                    "如果无误，输出 {\"status\":\"pass\"}；"
-                    "如果有误，指出具体错误并输出 {\"status\":\"rework\",\"errors\":[...],\"rewrite_advice\":\"...\"}。"
-                    "只允许输出 JSON，不得输出其他文字。"
+                    "你是一个严苛的【法务合规稽查员】。请严格对比前面 Agent 生成的法律观点与系统中存储的 laws（法条）�?evidences（证据）�?
+                    "检查是否存在：1. 捏造法条编号；2. 事实错误�?
+                    "如果无误，输�?{\"status\":\"pass\"}�?
+                    "如果有误，指出具体错误并输出 {\"status\":\"rework\",\"errors\":[...],\"rewrite_advice\":\"...\"}�?
+                    "只允许输�?JSON，不得输出其他文字�?
                 ),
                 (
                     "human",
@@ -601,7 +601,7 @@ class SupervisorDebateAgent:
 
             if status == "rework" and retries < max_retries:
                 errors = payload.get("errors") or []
-                advice = str(payload.get("rewrite_advice") or "请严格依据已给法条与证据重写，禁止新增未给定事实与法条编号。")
+                advice = str(payload.get("rewrite_advice") or "请严格依据已给法条与证据重写，禁止新增未给定事实与法条编号�?)
                 feedback_lines = ["稽查未通过，请按以下意见重写："]
                 if isinstance(errors, list) and errors:
                     feedback_lines.extend([f"- {str(e)}" for e in errors])
@@ -615,9 +615,9 @@ class SupervisorDebateAgent:
                     "messages": [{"role": "Verification_Node", "content": feedback}],
                 }
 
-            pass_note = "法务合规稽查通过。"
+            pass_note = "法务合规稽查通过�?
             if status == "rework" and retries >= max_retries:
-                pass_note = "法务稽查达到最大重试次数，按当前版本继续流转。"
+                pass_note = "法务稽查达到最大重试次数，按当前版本继续流转�?
             return {
                 "verification_status": "pass",
                 "verification_feedback": pass_note,
@@ -648,7 +648,7 @@ class SupervisorDebateAgent:
         return {
             "human_question": question,
             "messages": [{"role": "human_judge", "content": question}],
-            "supervisor_note": "法官（人类）已提交追问，继续审理。",
+            "supervisor_note": "法官（人类）已提交追问，继续审理�?,
         }
 
     async def _legal_researcher_node(self, state: SupervisorState) -> Dict:
@@ -673,7 +673,7 @@ class SupervisorDebateAgent:
 
         response = await self.llm.ainvoke(messages)
         content = response.content if hasattr(response, "content") else str(response)
-        plaintiff_points = self._extract_key_points(content, "我方主张需要进一步补充证据")
+        plaintiff_points = self._extract_key_points(content, "我方主张需要进一步补充证�?)
 
         return {
             "legal_basis": legal_basis,
@@ -707,7 +707,7 @@ class SupervisorDebateAgent:
 
         response = await self.llm.ainvoke(messages)
         content = response.content if hasattr(response, "content") else str(response)
-        defendant_points = self._extract_key_points(content, "我方抗辩需要进一步补充证据")
+        defendant_points = self._extract_key_points(content, "我方抗辩需要进一步补充证�?)
 
         return {
             "legal_basis": legal_basis,
@@ -775,12 +775,12 @@ class SupervisorDebateAgent:
     async def simulate_debate(self, case_description: str, strategy: str = "aggressive") -> DebateResponse:
         """Run full debate and return final structured response."""
         if not case_description or len(case_description.strip()) < 20:
-            raise ValueError("案情描述过短或为空，请提供详细案情")
+            raise ValueError("案情描述过短或为空，请提供详细案�?)
 
         initial_state: SupervisorState = {
             "case_description": case_description,
             "strategy": normalize_strategy(strategy),
-            "human_question": "请在无额外追问前提下直接进入最终评议。",
+            "human_question": "请在无额外追问前提下直接进入最终评议�?,
             "evidence_list": [],
             "legal_basis": "",
             "messages": [],
@@ -805,13 +805,13 @@ class SupervisorDebateAgent:
         defendant_text = final_state.get("contract_analysis_result", "")
         judge_text = final_state.get("final_answer") or final_state.get("litigation_strategy_result", "")
 
-        # 胜诉概率（简化为默认均衡，可在后续版本接入结构化评分）
+        # 胜诉概率（简化为默认均衡，可在后续版本接入结构化评分�?
         plaintiff_prob = 0.5
 
         legal_basis_text = final_state.get("legal_basis", "")
         legal_basis_items = [line for line in legal_basis_text.splitlines() if line.strip()][:5]
-        plaintiff_points = final_state.get("plaintiff_key_points") or self._extract_key_points(plaintiff_text, "我方主张需要进一步补充证据")
-        defendant_points = final_state.get("defendant_key_points") or self._extract_key_points(defendant_text, "我方抗辩需要进一步补充证据")
+        plaintiff_points = final_state.get("plaintiff_key_points") or self._extract_key_points(plaintiff_text, "我方主张需要进一步补充证�?)
+        defendant_points = final_state.get("defendant_key_points") or self._extract_key_points(defendant_text, "我方抗辩需要进一步补充证�?)
 
         return DebateResponse(
             case_description=case_description,
@@ -831,7 +831,7 @@ class SupervisorDebateAgent:
                 agent_role="Supervisor",
                 argument=judge_text,
                 legal_basis=legal_basis_items,
-                key_points=self._extract_key_points(judge_text, "裁判逻辑需结合完整证据进一步审查"),
+                key_points=self._extract_key_points(judge_text, "裁判逻辑需结合完整证据进一步审�?),
             ),
             win_probability={"plaintiff": plaintiff_prob, "defendant": 1 - plaintiff_prob},
         )
@@ -848,7 +848,7 @@ class SupervisorDebateAgent:
         return mapping.get(node_name, {"role": node_name or "未知角色", "role_key": "judge"})
 
     def _extract_chunk_text(self, chunk: object) -> str:
-        """兼容不同 message chunk 结构，提取可展示文本。"""
+        """兼容不同 message chunk 结构，提取可展示文本�?""
         if chunk is None:
             return ""
 
@@ -971,7 +971,7 @@ class SupervisorDebateAgent:
     ) -> AsyncIterator[Dict[str, Any]]:
         """Run debate in streaming mode and yield SSE-friendly payloads."""
         if not case_description or len(case_description.strip()) < 20:
-            raise ValueError("案情描述过短或为空")
+            raise ValueError("案情描述过短或为�?)
 
         original_llm = None
         if custom_config and custom_config.get("api_key"):

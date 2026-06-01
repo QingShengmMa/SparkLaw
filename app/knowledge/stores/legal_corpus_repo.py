@@ -6,7 +6,7 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional
 
-from app.knowledge.stores.vector_store import VectorStoreAdapter
+from app.knowledge.stores.vector_store_qdrant import VectorStoreAdapter
 
 
 class LegalCorpusRepo:

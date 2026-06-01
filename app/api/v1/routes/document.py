@@ -4,13 +4,18 @@
 同时提供法律条文库的独立管理接口
 """
 from typing import Optional
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Query
 from pydantic import BaseModel, Field
+from app.auth.dependencies import require_usage_context
 from app.core.logger import app_logger
 from app.services.document_parser import DocumentParser
 from app.services.rag_service import get_rag_service
 
-router = APIRouter(prefix="/document", tags=["文档管理"])
+router = APIRouter(
+    prefix="/document",
+    tags=["文档管理"],
+    dependencies=[Depends(require_usage_context)],
+)
 
 
 # ── 合同库响应模型 ─────────────────────────────────────────────
