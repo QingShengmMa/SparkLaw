@@ -3,8 +3,7 @@ LLM 工厂模式实现
 根据配置创建不同的 LLM 实例
 """
 
-from typing import Optional, Union
-from langchain_community.chat_models import ChatOllama
+from typing import Any, Optional, Union
 from langchain_openai import ChatOpenAI
 from app.core.config import settings
 from app.core.logger import app_logger
@@ -26,7 +25,7 @@ class LLMFactory:
         model: str = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None
-    ) -> Union[ChatOllama, ChatOpenAI, RoutedChatModel]:
+    ) -> Union[Any, ChatOpenAI, RoutedChatModel]:
         try:
             if api_key:
                 app_logger.info(f"✅ 使用自定义配置创建 LLM: model={model or settings.OPENAI_MODEL}")
@@ -70,9 +69,10 @@ class LLMFactory:
                 )
 
     @staticmethod
-    def _create_local_llm() -> ChatOllama:
+    def _create_local_llm() -> Any:
         app_logger.info(f"✅ 创建本地 LLM 实例: {settings.OLLAMA_MODEL}")
         try:
+            ChatOllama = LLMFactory._get_chat_ollama_class()
             return ChatOllama(
                 base_url=settings.OLLAMA_BASE_URL,
                 model=settings.OLLAMA_MODEL,
@@ -82,6 +82,32 @@ class LLMFactory:
         except Exception as e:
             app_logger.error(f"❌ 无法连接到 Ollama 服务 ({settings.OLLAMA_BASE_URL}): {str(e)}")
             raise
+
+    @staticmethod
+    def _get_chat_ollama_class():
+        try:
+            from langchain_ollama import ChatOllama
+
+            return ChatOllama
+        except ImportError:
+            pass
+
+        try:
+            from langchain_community.chat_models.ollama import ChatOllama
+
+            return ChatOllama
+        except ImportError:
+            pass
+
+        try:
+            from langchain_community.chat_models import ChatOllama
+
+            return ChatOllama
+        except ImportError as exc:
+            raise ImportError(
+                "Ollama 本地模式依赖未安装。云端部署请设置 LLM_MODE=cloud；"
+                "本地 Ollama 模式请安装 langchain-ollama。"
+            ) from exc
 
     @staticmethod
     def _cloud_providers() -> list[ProviderConfig]:

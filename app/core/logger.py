@@ -10,6 +10,10 @@ from app.core.config import settings
 
 def setup_logger():
     """配置日志系统"""
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     
     # 移除默认的 handler
     logger.remove()

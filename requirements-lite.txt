@@ -1,0 +1,37 @@
+# SparkLaw lightweight production profile for 2C/2G servers.
+# Keeps the core FastAPI + LangChain + document parsing experience, while
+# excluding local embedding/vector/observability/test tooling.
+
+# FastAPI Core
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+
+# LangChain Core
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+langchain-openai>=0.2.0
+langgraph>=1.0.0
+langgraph-checkpoint>=2.0.0
+langgraph-checkpoint-postgres>=2.0.0
+
+# Runtime utilities
+loguru>=0.7.2
+httpx>=0.26.0
+requests>=2.31.0
+duckduckgo-search>=5.0.0
+ddgs>=9.0.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.6
+sse-starlette>=1.6.5
+tenacity>=8.2.3
+
+# Document parsing
+PyMuPDF>=1.23.0
+python-docx>=1.1.0
+
+# Async task compatibility
+celery>=5.4.0
+redis>=5.0.0

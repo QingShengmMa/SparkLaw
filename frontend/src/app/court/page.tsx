@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Scale, Gavel, Users, Shield, Zap,
   MessageSquare, Plus, Trash2, ArrowLeft, Award,
@@ -48,6 +48,36 @@ interface ChatMsg {
 }
 interface LawRefItem { id: string; title: string; content: string; source?: string; party?: 'plaintiff' | 'defendant' | 'both'; }
 interface EvidenceRefItem { id: string; title: string; content: string; source?: string; party?: 'plaintiff' | 'defendant' | 'both'; }
+
+function buildFallbackLawRefs(caseDescription: string): LawRefItem[] {
+  const text = caseDescription || '';
+  const laws: Omit<LawRefItem, 'id'>[] = [];
+  const add = (title: string, content: string) => {
+    laws.push({ title, content, source: '内置常用法条摘要', party: 'both' });
+  };
+  const addContractBasics = () => {
+    add('《民法典》第五百零九条（合同履行原则）', '当事人应当按照约定全面履行自己的义务，并遵循诚信原则。');
+    add('《民法典》第五百七十七条（违约责任）', '一方不履行合同义务或者履行不符合约定的，应承担继续履行、采取补救措施或者赔偿损失等违约责任。');
+    add('《民法典》第五百八十四条（损失赔偿范围）', '违约损失赔偿通常包括因违约造成的损失和合同履行后可以获得的利益，并受可预见规则限制。');
+  };
+
+  if (/租赁|租金|房东|房屋|押金|转租|搬离|停水|停电|换锁/.test(text)) {
+    addContractBasics();
+    add('《民法典》第七百零三条（租赁合同定义）', '出租人将租赁物交付承租人使用、收益，承租人支付租金的合同。');
+    add('《民法典》第七百零八条（出租人交付和保持租赁物义务）', '出租人应按约定交付租赁物，并在租赁期限内保持租赁物符合约定用途。');
+    add('《民法典》第七百一十六条（转租规则）', '承租人经出租人同意可以转租；未经同意转租的，出租人可依法解除合同。');
+  } else if (/劳动|仲裁|工资|加班|辞退|解除|社保|年休假|竞业|N\+1|补偿/i.test(text)) {
+    add('《劳动合同法》第四十条（无过失性辞退）', '特定情形下，用人单位提前三十日书面通知或额外支付一个月工资后，可以解除劳动合同。');
+    add('《劳动合同法》第四十六条（经济补偿情形）', '规定用人单位应向劳动者支付经济补偿的主要情形。');
+    add('《劳动合同法》第四十七条（经济补偿计算）', '经济补偿按本单位工作年限计算，每满一年支付一个月工资，并有六个月上下的折算规则。');
+    add('《劳动合同法》第八十七条（违法解除赔偿金）', '用人单位违法解除或终止劳动合同的，应按经济补偿标准的二倍支付赔偿金。');
+  } else {
+    addContractBasics();
+    add('《民事诉讼法》第六十七条（举证责任）', '当事人对自己提出的主张，有责任提供证据。');
+  }
+
+  return laws.map((law, index) => ({ ...law, id: `law_${index + 1}` }));
+}
 interface HoverRefOptions {
   onRefHover?: (type: '证据' | '法条', value: string) => void;
   onRefLeave?: () => void;
@@ -160,6 +190,35 @@ function toPlainDisplayText(raw: string): string {
 const TRIAL_STAGES = ['开庭准备', '法庭调查', '举证质证', '法庭辩论', '最后陈述', '评议宣判'] as const;
 type TrialStage = typeof TRIAL_STAGES[number];
 
+const COURT_DRAFT_STORAGE_KEY = 'sparklaw_court_draft_v1';
+
+interface PersistedCourtDraft {
+  view: View;
+  caseDesc: string;
+  userRole: UserRole;
+  evidence: { plaintiff: EvidenceItem[]; defendant: EvidenceItem[] };
+  aiPersonas: AiPersonas;
+  chatHistory: ChatMsg[];
+  scores: { statute: number; logic: number; jury: number };
+  inputText: string;
+  reviewData: ReviewData | null;
+  leftSidebarOpen: boolean;
+  rightSidebarOpen: boolean;
+  evidenceRefs: EvidenceRefItem[];
+  lawRefs: LawRefItem[];
+  citedLawIds: string[];
+  courtThreadId: string | null;
+  courtSessionId: string;
+  currentStage: TrialStage;
+  completedStages: TrialStage[];
+  stageMessageEntries: Array<[TrialStage, ChatMsg]>;
+  savedAt: number;
+}
+
+function isValidTrialStage(value: unknown): value is TrialStage {
+  return typeof value === 'string' && (TRIAL_STAGES as readonly string[]).includes(value);
+}
+
 // 阶段映射：后端 phase 字段 -> 前端显示阶段
 const PHASE_TO_STAGE_MAP: Record<string, TrialStage> = {
   'opening': '开庭准备',
@@ -240,6 +299,10 @@ function renderReadableMessage(raw: string, options?: HoverRefOptions): React.Re
       })}
     </div>
   );
+}
+
+function extractLawIdsFromText(text: string): string[] {
+  return Array.from(new Set(Array.from((text || '').matchAll(/\[法条:(law_\d+)\]/g)).map(match => match[1])));
 }
 
 const CASE_EXAMPLES: CaseExample[] = [
@@ -587,12 +650,13 @@ function LiveView(props: {
   chatEndRef: React.RefObject<HTMLDivElement>; isStreaming: boolean;
   scores: { statute: number; logic: number; jury: number };
   inputText: string; setInputText: (v: string) => void;
-  onSpeak: () => void; onBack: () => void; onEndReview: () => void;
+  onSpeak: () => void; onBack: () => void; onStart: () => void; onContinue: () => void; onEndReview: () => void;
   leftSidebarOpen: boolean; rightSidebarOpen: boolean;
   onToggleLeftSidebar: () => void; onToggleRightSidebar: () => void;
   onJumpToMessage: (msgId: string) => void;
   evidenceRefs: EvidenceRefItem[];
   lawRefs: LawRefItem[];
+  citedLawIds: Set<string>;
   activeEvidenceId?: string | null;
   activeLawId?: string | null;
   onReferenceHover: (type: '证据' | '法条', value: string) => void;
@@ -604,10 +668,26 @@ function LiveView(props: {
   completedStages: Set<TrialStage>;
   stageMessageMap: Map<TrialStage, ChatMsg>;
 }) {
-  const { caseDesc, userRole, chatHistory, chatEndRef, isStreaming, scores, inputText, setInputText, onSpeak, onBack, onEndReview, leftSidebarOpen, rightSidebarOpen, onToggleLeftSidebar, onToggleRightSidebar, onJumpToMessage, evidenceRefs, lawRefs, activeEvidenceId, activeLawId, onReferenceHover, onReferenceLeave, onReferenceClick, resolveRefDetail, currentStage, completedStages, stageMessageMap } = props;
+  const { caseDesc, userRole, chatHistory, chatEndRef, isStreaming, scores, inputText, setInputText, onSpeak, onBack, onStart, onContinue, onEndReview, leftSidebarOpen, rightSidebarOpen, onToggleLeftSidebar, onToggleRightSidebar, onJumpToMessage, evidenceRefs, lawRefs, citedLawIds, activeEvidenceId, activeLawId, onReferenceHover, onReferenceLeave, onReferenceClick, resolveRefDetail, currentStage, completedStages, stageMessageMap } = props;
 
   // ✅ 移除旧的本地计算逻辑，直接使用传入的状态
   const currentStageIndex = TRIAL_STAGES.indexOf(currentStage);
+  const substantiveMessages = chatHistory.filter(msg => {
+    const content = toPlainDisplayText(msg.content || '').trim();
+    if (!content) return false;
+    if (msg.role === 'system' && /庭审即将开始|错误:/.test(content)) return false;
+    return msg.role !== 'system';
+  });
+  const hasSubstantiveMessages = substantiveMessages.length > 0;
+  const trialFinished = hasSubstantiveMessages && currentStage === '评议宣判' && !isStreaming;
+  const canContinue = hasSubstantiveMessages && !trialFinished && !isStreaming;
+  const trialStatus = isStreaming
+    ? { label: '正在开庭', dot: '🔴', className: 'bg-red-50 text-red-600 border-red-100' }
+    : trialFinished
+      ? { label: '庭审完成', dot: '🟢', className: 'bg-green-50 text-green-600 border-green-100' }
+      : hasSubstantiveMessages
+        ? { label: '已暂停，可继续', dot: '🟡', className: 'bg-amber-50 text-amber-700 border-amber-100' }
+        : { label: '开庭准备', dot: '⚪', className: 'bg-slate-50 text-slate-500 border-slate-200' };
 
   const classifyByParty = <T extends { id?: string; title?: string; content?: string; party?: 'plaintiff' | 'defendant' | 'both' }>(
     refs: T[],
@@ -648,8 +728,10 @@ function LiveView(props: {
     return { plaintiff: p, defendant: d };
   };
 
+  const visibleLawRefs = (lawRefs.length > 0 ? lawRefs : buildFallbackLawRefs(caseDesc))
+    .filter(law => citedLawIds.has(law.id));
   const evidenceByParty = classifyByParty(evidenceRefs, '证据');
-  const lawByParty = classifyByParty(lawRefs, '法条');
+  const lawByParty = classifyByParty(visibleLawRefs, '法条');
 
   return (
     <div className="flex-1 flex flex-col bg-slate-50 dark:bg-slate-800 overflow-hidden">
@@ -659,15 +741,26 @@ function LiveView(props: {
           <div>
             <h2 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               {caseDesc.slice(0,28)}{caseDesc.length>28?'...':''}
-              <span className={`px-2 py-0.5 text-xs rounded border inline-flex items-center gap-1 ${isStreaming?'bg-red-50 text-red-600 border-red-100':'bg-green-50 text-green-600 border-green-100'}`}>
-                {isStreaming ? '正在开庭' : '庭审结束'}
-                <span className="text-sm leading-none">{isStreaming ? '🔴' : '🟢'}</span>
+              <span className={`px-2 py-0.5 text-xs rounded border inline-flex items-center gap-1 ${trialStatus.className}`}>
+                {trialStatus.label}
+                <span className="text-sm leading-none">{trialStatus.dot}</span>
               </span>
             </h2>
             <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">当前身份：<strong className="text-blue-600">{userRole==='defendant'?'被告代理人':userRole==='plaintiff'?'原告代理人':'旁听席'}</strong>&nbsp;|&nbsp;<strong className="text-blue-600">{currentStage}</strong></div>
           </div>
         </div>
-        <button onClick={onEndReview} className="text-sm flex items-center text-blue-600 font-medium hover:bg-blue-50 dark:hover:bg-blue-900/30 px-4 py-2 rounded-lg transition"><Award className="w-4 h-4 mr-1"/> 终止审理并生成复盘</button>
+        {isStreaming ? (
+          <button disabled className="text-sm flex items-center text-red-600 font-medium bg-red-50 border border-red-100 px-4 py-2 rounded-lg cursor-wait"><Gavel className="w-4 h-4 mr-1"/> 开庭中...</button>
+        ) : !hasSubstantiveMessages ? (
+          <button onClick={() => onStart()} className="text-sm flex items-center text-blue-600 font-medium hover:bg-blue-50 dark:hover:bg-blue-900/30 px-4 py-2 rounded-lg transition"><Gavel className="w-4 h-4 mr-1"/> 继续开庭</button>
+        ) : canContinue ? (
+          <div className="flex items-center gap-2">
+            <button onClick={() => onContinue()} className="text-sm flex items-center text-blue-600 font-medium hover:bg-blue-50 dark:hover:bg-blue-900/30 px-4 py-2 rounded-lg transition"><Gavel className="w-4 h-4 mr-1"/> 继续开庭</button>
+            <button onClick={onEndReview} className="text-sm flex items-center text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 px-3 py-2 rounded-lg transition"><Award className="w-4 h-4 mr-1"/> 生成复盘</button>
+          </div>
+        ) : (
+          <button onClick={onEndReview} className="text-sm flex items-center text-blue-600 font-medium hover:bg-blue-50 dark:hover:bg-blue-900/30 px-4 py-2 rounded-lg transition"><Award className="w-4 h-4 mr-1"/> 终止审理并生成复盘</button>
+        )}
       </header>
       <div className="flex-1 flex overflow-hidden">
         {leftSidebarOpen ? (
@@ -1067,6 +1160,7 @@ export default function CourtPage() {
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [evidenceRefs, setEvidenceRefs] = useState<EvidenceRefItem[]>([]);
   const [lawRefs, setLawRefs] = useState<LawRefItem[]>([]);
+  const [citedLawIds, setCitedLawIds] = useState<Set<string>>(new Set());
   const [activeEvidenceId, setActiveEvidenceId] = useState<string | null>(null);
   const [activeLawId, setActiveLawId] = useState<string | null>(null);
   const [courtThreadId, setCourtThreadId] = useState<string | null>(null);
@@ -1077,10 +1171,122 @@ export default function CourtPage() {
   const [completedStages, setCompletedStages] = useState<Set<TrialStage>>(new Set());
   // ✅ 新增：阶段与消息的映射关系
   const [stageMessageMap, setStageMessageMap] = useState<Map<TrialStage, ChatMsg>>(new Map());
+  const [courtDraftHydrated, setCourtDraftHydrated] = useState(false);
   
   const visibleCaseExamples = CASE_EXAMPLES.slice(templatePage * 4, templatePage * 4 + 4);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const courtSessionIdRef = useRef(`court_${Date.now()}`);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COURT_DRAFT_STORAGE_KEY);
+      if (!raw) {
+        setCourtDraftHydrated(true);
+        return;
+      }
+
+      const draft = JSON.parse(raw) as Partial<PersistedCourtDraft>;
+      if (!draft || typeof draft !== 'object') {
+        setCourtDraftHydrated(true);
+        return;
+      }
+
+      if (draft.view === 'setup' || draft.view === 'live' || draft.view === 'review') setView(draft.view);
+      if (typeof draft.caseDesc === 'string') setCaseDesc(draft.caseDesc);
+      if (draft.userRole === 'plaintiff' || draft.userRole === 'defendant' || draft.userRole === 'audience') setUserRole(draft.userRole);
+      if (draft.evidence?.plaintiff && draft.evidence?.defendant) setEvidence(draft.evidence);
+      if (draft.aiPersonas) setAiPersonas(draft.aiPersonas);
+      if (Array.isArray(draft.chatHistory)) setChatHistory(draft.chatHistory);
+      if (draft.scores) setScores(draft.scores);
+      if (typeof draft.inputText === 'string') setInputText(draft.inputText);
+      if (draft.reviewData !== undefined) setReviewData(draft.reviewData || null);
+      if (typeof draft.leftSidebarOpen === 'boolean') setLeftSidebarOpen(draft.leftSidebarOpen);
+      if (typeof draft.rightSidebarOpen === 'boolean') setRightSidebarOpen(draft.rightSidebarOpen);
+      if (Array.isArray(draft.evidenceRefs)) setEvidenceRefs(draft.evidenceRefs);
+      if (Array.isArray(draft.lawRefs)) setLawRefs(draft.lawRefs);
+      if (Array.isArray(draft.citedLawIds)) setCitedLawIds(new Set(draft.citedLawIds));
+      if (typeof draft.courtThreadId === 'string' || draft.courtThreadId === null) setCourtThreadId(draft.courtThreadId || null);
+      if (typeof draft.courtSessionId === 'string' && draft.courtSessionId) courtSessionIdRef.current = draft.courtSessionId;
+      if (isValidTrialStage(draft.currentStage)) setCurrentStage(draft.currentStage);
+      if (Array.isArray(draft.completedStages)) {
+        setCompletedStages(new Set(draft.completedStages.filter(isValidTrialStage)));
+      }
+      if (Array.isArray(draft.stageMessageEntries)) {
+        const entries = draft.stageMessageEntries.filter(([stage]) => isValidTrialStage(stage));
+        setStageMessageMap(new Map(entries));
+      }
+    } catch (error) {
+      console.warn('Failed to restore court draft', error);
+      localStorage.removeItem(COURT_DRAFT_STORAGE_KEY);
+    } finally {
+      setCourtDraftHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!courtDraftHydrated) return;
+
+    const hasMeaningfulDraft =
+      view !== 'setup'
+      || !!caseDesc.trim()
+      || chatHistory.length > 0
+      || evidence.plaintiff.length > 0
+      || evidence.defendant.length > 0;
+
+    if (!hasMeaningfulDraft) {
+      localStorage.removeItem(COURT_DRAFT_STORAGE_KEY);
+      return;
+    }
+
+    const draft: PersistedCourtDraft = {
+      view,
+      caseDesc,
+      userRole,
+      evidence,
+      aiPersonas,
+      chatHistory,
+      scores,
+      inputText,
+      reviewData,
+      leftSidebarOpen,
+      rightSidebarOpen,
+      evidenceRefs,
+      lawRefs,
+      citedLawIds: Array.from(citedLawIds),
+      courtThreadId,
+      courtSessionId: courtSessionIdRef.current,
+      currentStage,
+      completedStages: Array.from(completedStages),
+      stageMessageEntries: Array.from(stageMessageMap.entries()),
+      savedAt: Date.now(),
+    };
+
+    try {
+      localStorage.setItem(COURT_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    } catch (error) {
+      console.warn('Failed to save court draft', error);
+    }
+  }, [
+    view,
+    caseDesc,
+    userRole,
+    evidence,
+    aiPersonas,
+    chatHistory,
+    scores,
+    inputText,
+    reviewData,
+    leftSidebarOpen,
+    rightSidebarOpen,
+    evidenceRefs,
+    lawRefs,
+    citedLawIds,
+    courtThreadId,
+    currentStage,
+    completedStages,
+    stageMessageMap,
+    courtDraftHydrated,
+  ]);
 
   const addEv = useCallback((side: 'plaintiff' | 'defendant') => {
     setEvidence(prev => {
@@ -1107,27 +1313,32 @@ export default function CourtPage() {
     }));
   }, []);
 
-  const handleStart = useCallback(async () => {
+  const handleStart = useCallback(async (mode: 'restart' | 'continue' = 'restart') => {
+    const isContinue = mode === 'continue';
+    const shouldContinueExistingThread = isContinue && Boolean(courtThreadId);
     setView('live');
-    setChatHistory([{ role: 'system', name: '系统', content: '庭审即将开始...' }]);
+    if (isContinue) {
+      setChatHistory(prev => [
+        ...prev.filter(msg => msg.role === 'system' || toPlainDisplayText(msg.content || '').trim()),
+        { role: 'system', name: '系统', content: '继续庭审中...' },
+      ]);
+    } else {
+      setChatHistory([{ role: 'system', name: '系统', content: '庭审即将开始...' }]);
+    }
     setIsStreaming(true);
-    setScores({ statute: 0, logic: 0, jury: 0 });
-    scoreAccRef.current = { messages: 0, lawRefs: 0, evidenceRefs: 0, phases: new Set<string>() };
-    setEvidenceRefs([]);
-    setLawRefs([]);
-    setActiveEvidenceId(null);
-    setActiveLawId(null);
-    setCourtThreadId(null);
-    
-    // ✅ 重置阶段状态
-    setCurrentStage('开庭准备');
-    setCompletedStages(new Set());
-    setStageMessageMap(new Map());
-    
-    // ✅ 重置阶段状态
-    setCurrentStage('开庭准备');
-    setCompletedStages(new Set());
-    setStageMessageMap(new Map());
+    if (!shouldContinueExistingThread) {
+      setScores({ statute: 0, logic: 0, jury: 0 });
+      scoreAccRef.current = { messages: 0, lawRefs: 0, evidenceRefs: 0, phases: new Set<string>() };
+      setEvidenceRefs([]);
+      setLawRefs([]);
+      setCitedLawIds(new Set());
+      setActiveEvidenceId(null);
+      setActiveLawId(null);
+      setCourtThreadId(null);
+      setCurrentStage('开庭准备');
+      setCompletedStages(new Set());
+      setStageMessageMap(new Map());
+    }
 
     // 本地实时评分引擎
     const computeScores = (acc: typeof scoreAccRef.current) => {
@@ -1151,7 +1362,7 @@ export default function CourtPage() {
         {
           case_description: caseDesc,
           strategy,
-          thread_id: courtThreadId || undefined,
+          thread_id: shouldContinueExistingThread ? courtThreadId || undefined : undefined,
           session_id: courtSessionIdRef.current,
           human_evidence: humanEvidence
         },
@@ -1167,6 +1378,24 @@ export default function CourtPage() {
                   ? 'defendant'
                   : 'system';
           };
+
+          if (event.type === 'log') {
+            const message = 'message' in event ? event.message : undefined;
+            if (message) {
+              setChatHistory(prev => [...prev, { role: 'system', name: '系统', content: message }]);
+            }
+            return;
+          }
+
+          if (event.type === 'error') {
+            const message = 'message' in event ? event.message : undefined;
+            setChatHistory(prev => [...prev, {
+              role: 'system',
+              name: '系统',
+              content: message || '庭审推演中断，请稍后重试。',
+            }]);
+            return;
+          }
 
           if (event.type === 'thread') {
             if (event.thread_id) {
@@ -1235,6 +1464,10 @@ export default function CourtPage() {
           } else if (event.type === 'chunk') {
             const chunkText = event.content || '';
             if (!chunkText) return;
+            const lawIdsInChunk = extractLawIdsFromText(chunkText);
+            if (lawIdsInChunk.length > 0) {
+              setCitedLawIds(prev => new Set([...Array.from(prev), ...lawIdsInChunk]));
+            }
 
             setChatHistory(prev => {
               const msgId = 'msg_id' in event ? event.msg_id : undefined;
@@ -1306,8 +1539,6 @@ export default function CourtPage() {
           } else if (event.type === 'law_list') {
             if (Array.isArray(event.law_list)) {
               setLawRefs(event.law_list);
-              scoreAccRef.current.lawRefs = event.law_list.length;
-              setScores(computeScores(scoreAccRef.current));
             }
           } else if (event.type === 'evidence_reference') {
             if (event.evidence_id) {
@@ -1318,6 +1549,7 @@ export default function CourtPage() {
           } else if (event.type === 'law_reference') {
             if (event.law_id) {
               setActiveLawId(event.law_id);
+              setCitedLawIds(prev => new Set(prev).add(event.law_id!));
               scoreAccRef.current.lawRefs += 1;
               setScores(computeScores(scoreAccRef.current));
             }
@@ -1325,6 +1557,10 @@ export default function CourtPage() {
             if (event.result?.evidence_list) setEvidenceRefs(event.result.evidence_list);
             if (event.result?.law_list) setLawRefs(event.result.law_list);
             if (event.result?.verdict) {
+              const verdictLawIds = extractLawIdsFromText(event.result.verdict);
+              if (verdictLawIds.length > 0) {
+                setCitedLawIds(prev => new Set([...Array.from(prev), ...verdictLawIds]));
+              }
               setChatHistory(prev => [...prev, {
                 msgId: `msg_${Date.now()}_${prev.length}`,
                 role: 'judge',
@@ -1360,9 +1596,15 @@ export default function CourtPage() {
         content: `错误: ${err instanceof Error ? err.message : '未知错误'}`
       }]);
     } finally {
+      setChatHistory(prev => prev.filter(msg => msg.role === 'system' || toPlainDisplayText(msg.content || '').trim()));
       setIsStreaming(false);
     }
   }, [caseDesc, userRole, evidence, aiPersonas, courtThreadId]);
+
+  const handleContinue = useCallback(() => {
+    if (isStreaming) return;
+    handleStart(courtThreadId ? 'continue' : 'restart');
+  }, [courtThreadId, handleStart, isStreaming]);
 
   const handleSpeak = useCallback(async () => {
     const speech = inputText.trim();
@@ -1456,6 +1698,10 @@ export default function CourtPage() {
           if (event.type === 'chunk') {
             const chunkText = event.content || '';
             if (!chunkText) return;
+            const lawIdsInChunk = extractLawIdsFromText(chunkText);
+            if (lawIdsInChunk.length > 0) {
+              setCitedLawIds(prev => new Set([...Array.from(prev), ...lawIdsInChunk]));
+            }
             setChatHistory(prev => {
               const msgId = 'msg_id' in event ? event.msg_id : undefined;
               const next = [...prev];
@@ -1536,10 +1782,15 @@ export default function CourtPage() {
 
           if (event.type === 'law_reference' && event.law_id) {
             setActiveLawId(event.law_id);
+            setCitedLawIds(prev => new Set(prev).add(event.law_id!));
             return;
           }
 
           if (event.type === 'result' && event.result?.verdict) {
+            const verdictLawIds = extractLawIdsFromText(event.result.verdict);
+            if (verdictLawIds.length > 0) {
+              setCitedLawIds(prev => new Set([...Array.from(prev), ...verdictLawIds]));
+            }
             setChatHistory(prev => [...prev, {
               msgId: `msg_${Date.now()}_${prev.length}`,
               role: 'judge',
@@ -1565,6 +1816,7 @@ export default function CourtPage() {
         content: `错误: ${err instanceof Error ? err.message : '未知错误'}`
       }]);
     } finally {
+      setChatHistory(prev => prev.filter(msg => msg.role === 'system' || toPlainDisplayText(msg.content || '').trim()));
       setIsStreaming(false);
     }
   }, [inputText, userRole, isStreaming, caseDesc, aiPersonas, courtThreadId]);
@@ -1591,6 +1843,7 @@ export default function CourtPage() {
 
   const handleReset = useCallback(() => {
     // 返回法庭主界面，清空所有状态
+    localStorage.removeItem(COURT_DRAFT_STORAGE_KEY);
     setView('setup');
     setCaseDesc('');
     setEvidence({ plaintiff: [], defendant: [] });
@@ -1599,8 +1852,14 @@ export default function CourtPage() {
     setScores({ statute: 0, logic: 0, jury: 0 });
     setEvidenceRefs([]);
     setLawRefs([]);
+    setCitedLawIds(new Set());
     setActiveEvidenceId(null);
     setActiveLawId(null);
+    setCourtThreadId(null);
+    courtSessionIdRef.current = `court_${Date.now()}`;
+    setCurrentStage('开庭准备');
+    setCompletedStages(new Set());
+    setStageMessageMap(new Map());
   }, []);
 
   // 重新审判：保留案情/身份/证据/风格，重新开庭
@@ -1610,8 +1869,11 @@ export default function CourtPage() {
     setScores({ statute: 0, logic: 0, jury: 0 });
     setEvidenceRefs([]);
     setLawRefs([]);
+    setCitedLawIds(new Set());
     setActiveEvidenceId(null);
     setActiveLawId(null);
+    setCourtThreadId(null);
+    courtSessionIdRef.current = `court_${Date.now()}`;
     
     // ✅ 重置阶段状态
     setCurrentStage('开庭准备');
@@ -1632,22 +1894,24 @@ export default function CourtPage() {
 
   const resolveRefDetail = useCallback((type: '证据' | '法条', value: string): string | undefined => {
     if (type === '法条') {
-      const law = lawRefs.find(l => l.id === value || l.title === value || l.title?.includes(value));
+      const sourceLawRefs = lawRefs.length > 0 ? lawRefs : buildFallbackLawRefs(caseDesc);
+      const law = sourceLawRefs.find(l => l.id === value || l.title === value || l.title?.includes(value));
       return law ? `${law.title}\n${law.content}` : undefined;
     }
     const ev = evidenceRefs.find(e => e.id === value || e.title === value || e.title?.includes(value));
     return ev ? `${ev.title}\n${ev.content}` : undefined;
-  }, [lawRefs, evidenceRefs]);
+  }, [caseDesc, lawRefs, evidenceRefs]);
 
   const handleReferenceHover = useCallback((type: '证据' | '法条', value: string) => {
     if (type === '法条') {
-      const law = lawRefs.find(l => l.id === value || l.title === value || l.title?.includes(value));
+      const sourceLawRefs = lawRefs.length > 0 ? lawRefs : buildFallbackLawRefs(caseDesc);
+      const law = sourceLawRefs.find(l => l.id === value || l.title === value || l.title?.includes(value));
       setActiveLawId(law?.id || value);
     } else {
       const ev = evidenceRefs.find(e => e.id === value || e.title === value || e.title?.includes(value));
       setActiveEvidenceId(ev?.id || value);
     }
-  }, [lawRefs, evidenceRefs]);
+  }, [caseDesc, lawRefs, evidenceRefs]);
 
   const handleReferenceLeave = useCallback(() => {
     setActiveEvidenceId(null);
@@ -1656,7 +1920,8 @@ export default function CourtPage() {
 
   const handleReferenceClick = useCallback((type: '证据' | '法条', value: string) => {
     if (type === '法条') {
-      const law = lawRefs.find(l => l.id === value || l.title === value || l.title?.includes(value));
+      const sourceLawRefs = lawRefs.length > 0 ? lawRefs : buildFallbackLawRefs(caseDesc);
+      const law = sourceLawRefs.find(l => l.id === value || l.title === value || l.title?.includes(value));
       const targetId = law?.id || value;
       setActiveLawId(targetId);
       const el = document.getElementById(`law-card-${targetId}`);
@@ -1669,7 +1934,7 @@ export default function CourtPage() {
     setActiveEvidenceId(targetId);
     const el = document.getElementById(`evidence-card-${targetId}`);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [lawRefs, evidenceRefs]);
+  }, [caseDesc, lawRefs, evidenceRefs]);
 
   return (
     <div className="h-screen flex flex-col bg-slate-50 dark:bg-slate-800 dark:bg-slate-950">
@@ -1703,6 +1968,8 @@ export default function CourtPage() {
           setInputText={setInputText}
           onSpeak={handleSpeak}
           onBack={() => setView('setup')}
+          onStart={handleStart}
+          onContinue={handleContinue}
           onEndReview={handleEndReview}
           leftSidebarOpen={leftSidebarOpen}
           rightSidebarOpen={rightSidebarOpen}
@@ -1711,6 +1978,7 @@ export default function CourtPage() {
           onJumpToMessage={handleJumpToMessage}
           evidenceRefs={evidenceRefs}
           lawRefs={lawRefs}
+          citedLawIds={citedLawIds}
           activeEvidenceId={activeEvidenceId}
           activeLawId={activeLawId}
           onReferenceHover={handleReferenceHover}

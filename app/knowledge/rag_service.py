@@ -10,16 +10,9 @@ import uuid
 import asyncio
 from difflib import SequenceMatcher
 from typing import List, Dict, Any, Optional
-from sentence_transformers import SentenceTransformer
 from app.core.config import settings
 from app.core.logger import app_logger
 from app.services.legal_chunker import LegalChunker
-from app.knowledge.retrievers.query_rewriter import QueryRewriter
-from app.knowledge.retrievers.hybrid_retriever import HybridRetriever
-from app.knowledge.rerankers.cross_encoder import Reranker
-from app.knowledge.stores.vector_store_qdrant import VectorStoreAdapter
-from app.knowledge.stores.legal_corpus_repo import LegalCorpusRepo
-from app.knowledge.semantic_cache import get_semantic_cache
 
 
 class RAGService:
@@ -31,6 +24,14 @@ class RAGService:
         self.embedding_model_name = embedding_model_name or self.DEFAULT_EMBEDDING_MODEL
         self.qdrant_url = qdrant_url or settings.QDRANT_URL
         try:
+            from sentence_transformers import SentenceTransformer
+            from app.knowledge.retrievers.query_rewriter import QueryRewriter
+            from app.knowledge.retrievers.hybrid_retriever import HybridRetriever
+            from app.knowledge.rerankers.cross_encoder import Reranker
+            from app.knowledge.stores.vector_store_qdrant import VectorStoreAdapter
+            from app.knowledge.stores.legal_corpus_repo import LegalCorpusRepo
+            from app.knowledge.semantic_cache import get_semantic_cache
+
             app_logger.info(f"🔄 正在加载 Embedding 模型: {self.embedding_model_name}")
             self.embedding_model = SentenceTransformer(self.embedding_model_name)
             app_logger.info("✅ Embedding 模型加载完成")

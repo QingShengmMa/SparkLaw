@@ -9,16 +9,16 @@ import asyncio
 import os
 import re
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import TYPE_CHECKING, Dict, List, Any, Optional
 
-import chromadb
-from chromadb.config import Settings as ChromaSettings
-from sentence_transformers import SentenceTransformer
 from langchain_core.messages import HumanMessage
 
 from app.core.config import settings
 from app.core.logger import app_logger
 from app.llm.factory import LLMFactory
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 
 class HybridMemoryManager:
@@ -27,7 +27,15 @@ class HybridMemoryManager:
     def __init__(self, short_term_rounds: int = 5):
         self.short_term_rounds = short_term_rounds
         self._summary_store: Dict[str, str] = {}
+        self.chroma_client = None
+        self.embedding_model: Optional["SentenceTransformer"] = None
 
+        if settings.ENABLE_SEMANTIC_MEMORY:
+            self._init_semantic_memory_store()
+
+        self.summary_llm = self._create_summary_llm()
+
+    def _init_semantic_memory_store(self) -> None:
         memory_dir = f"{settings.CHROMA_PERSIST_DIR}/user_memory"
         
         # ✅ 步骤1：创建持久化目录
@@ -55,15 +63,20 @@ class HybridMemoryManager:
             memory_dir = tempfile.mkdtemp(prefix="sparklaw_memory_")
             app_logger.warning(f"⚠️ 使用系统临时目录: {memory_dir}")
         
+        try:
+            import chromadb
+            from chromadb.config import Settings as ChromaSettings
+        except ImportError as e:
+            app_logger.warning(f"语义记忆依赖未安装，已降级为短期+摘要记忆: {e}")
+            return
+
         self.chroma_client = chromadb.PersistentClient(
             path=memory_dir,
             settings=ChromaSettings(anonymized_telemetry=False, allow_reset=True),
         )
-        self.embedding_model: Optional[SentenceTransformer] = self._create_embedding_model()
+        self.embedding_model = self._create_embedding_model()
 
-        self.summary_llm = self._create_summary_llm()
-
-    def _create_embedding_model(self) -> Optional[SentenceTransformer]:
+    def _create_embedding_model(self) -> Optional["SentenceTransformer"]:
         """创建向量模型，失败时降级为禁用语义记忆（不阻塞服务启动）。"""
         if not settings.ENABLE_SEMANTIC_MEMORY:
             app_logger.info("语义记忆已关闭（ENABLE_SEMANTIC_MEMORY=False）")
@@ -71,6 +84,8 @@ class HybridMemoryManager:
 
         model_name = settings.EMBEDDING_MODEL
         try:
+            from sentence_transformers import SentenceTransformer
+
             model = SentenceTransformer(model_name, local_files_only=settings.EMBEDDING_LOCAL_ONLY)
             app_logger.info(
                 f"✅ 向量模型加载成功: {model_name} (local_only={settings.EMBEDDING_LOCAL_ONLY})"
@@ -103,6 +118,8 @@ class HybridMemoryManager:
         return f"memory_{safe_id}"[:60]
 
     def _get_collection(self, session_id: str):
+        if self.chroma_client is None:
+            raise RuntimeError("语义记忆未启用")
         return self.chroma_client.get_or_create_collection(
             name=self._collection_name(session_id),
             metadata={"description": f"session memory for {session_id}"},

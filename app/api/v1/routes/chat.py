@@ -41,6 +41,21 @@ async def chat_stream(
     request: ChatRequest,
 ):
     async def generate():
+        agent = None
+        history = []
+        messages = []
+        summary_memory = ""
+        semantic_memories = []
+        legal_context = ""
+
+        def is_tool_generation_error(error_text: str) -> bool:
+            lower = (error_text or "").lower()
+            return (
+                "failed_generation" in lower
+                or "failed to call a function" in lower
+                or "tool_use_failed" in lower
+            )
+
         try:
             from app.agents.chat_methods import get_legal_agent
             from app.tools.legal_tools import get_tools
@@ -94,10 +109,11 @@ async def chat_stream(
                 user_input=request.question,
             )
             tracker = TTFTTracker(session_id=request.session_id)
+            effective_thread_id = request.thread_id or request.session_id
             async for chunk in agent.run_react_event_stream(
                 messages,
                 graph_to_use=graph_to_use,
-                thread_id=request.thread_id,
+                thread_id=effective_thread_id,
                 enable_deep_think=request.enable_deep_think,
                 enable_web_search=request.enable_web_search,
                 legal_context=legal_context,
@@ -115,6 +131,41 @@ async def chat_stream(
                     "message": "回答因合规校验未通过而被拦截，请调整问题后重试。",
                 }
                 yield f"event: error\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            elif is_tool_generation_error(err_text) and messages:
+                try:
+                    app_logger.warning("工具调用生成失败，降级为无工具普通回答")
+                    fallback_llm = LLMFactory.create_llm()
+                    response = await fallback_llm.ainvoke(messages)
+                    answer = response.content if hasattr(response, "content") else str(response)
+                    if isinstance(answer, list):
+                        answer = "".join(
+                            item.get("text", "") if isinstance(item, dict) else str(item)
+                            for item in answer
+                        )
+                    answer = str(answer).strip()
+
+                    if history is not None:
+                        history.append({"role": "user", "content": request.question})
+                        history.append({"role": "assistant", "content": answer})
+                    if agent is not None:
+                        memory_manager.schedule_semantic_memory_write(
+                            session_id=request.session_id,
+                            user_question=request.question,
+                            assistant_answer=answer,
+                        )
+
+                    yield f"data: {json.dumps({'type': 'text', 'content': answer}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'final', 'answer': answer}, ensure_ascii=False)}\n\n"
+                except Exception as fallback_error:
+                    app_logger.error(f"无工具降级回答失败: {fallback_error}")
+                    payload = {
+                        "type": "error",
+                        "role": "error",
+                        "error_code": "STREAM_FALLBACK_ERROR",
+                        "message": "模型工具调用失败，降级回答也未成功。请稍后重试或关闭联网搜索后再试。",
+                        "content": str(fallback_error),
+                    }
+                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
             else:
                 payload = {
                     "type": "error",

@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     # 工具配置
     ENABLE_WEB_SEARCH: bool = True
     ENABLE_CALCULATOR: bool = False
+    ENABLE_OBSERVABILITY: bool = False
     
     # 法律辖区配置
     DEFAULT_JURISDICTION: str = "中国"
@@ -89,7 +90,7 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION_CONTRACTS: str = "legal_contracts"
     QDRANT_COLLECTION_LAWS: str = "legal_corpus"
     QDRANT_VECTOR_SIZE: int = 512  # BAAI/bge-small-zh-v1.5 的向量维度
-    ENABLE_SEMANTIC_MEMORY: bool = True
+    ENABLE_SEMANTIC_MEMORY: bool = False
     EMBEDDING_MODEL: str = "BAAI/bge-small-zh-v1.5"
     EMBEDDING_LOCAL_ONLY: bool = False
     
@@ -97,7 +98,7 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: str = "./data/chroma_db"
     
     # 语义缓存配置
-    ENABLE_SEMANTIC_CACHE: bool = True
+    ENABLE_SEMANTIC_CACHE: bool = False
     SEMANTIC_CACHE_THRESHOLD: float = 0.92
     SEMANTIC_CACHE_TOP_K: int = 1
     SEMANTIC_CACHE_TTL_DAYS: int = 30

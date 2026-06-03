@@ -20,7 +20,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+COPY requirements-lite.txt .
+ARG REQUIREMENTS_FILE=requirements.txt
+RUN pip install --no-cache-dir --prefix=/install -r ${REQUIREMENTS_FILE}
 
 
 # ── Stage 2: runtime image ───────────────────────────────────

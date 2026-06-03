@@ -59,7 +59,7 @@ const TOOLS: Tool[] = [
   {
     id: 'compliance',
     icon: <Building2 size={22} strokeWidth={1.8}/>,
-    title: '合规检查',
+    title: '合规审查',
     desc: '全链路扫描企业用工风险，输出评分与整改优先级清单',
     href: '/tools/compliance',
     accent: 'group-hover:text-[#1A73E8]',

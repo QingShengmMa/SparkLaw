@@ -103,11 +103,16 @@ class CourtDebateAgent:
 
     def __init__(self) -> None:
         self.llm = LLMFactory.create_llm()
-        self.rag = get_rag_service()
+        self.rag = None
         self.hallucination_guard = HallucinationGuard()
         self.checkpointer = self._create_checkpointer()
         self.graph = self._build_graph()
         app_logger.info("⚖️  CourtDebateAgent 初始化完成")
+
+    def _get_rag(self):
+        if self.rag is None:
+            self.rag = get_rag_service()
+        return self.rag
 
     def _create_checkpointer(self):
         try:
@@ -199,19 +204,24 @@ class CourtDebateAgent:
             return existing
 
         # 优先从法律条文库（legal_corpus）检索，若法条库为空则回退到合同库
-        results = await self.rag.retrieve_law(
-            query=state["case_description"], top_k=8, recall_top_k=20
-        ) if hasattr(self.rag, "retrieve_law") else []
+        try:
+            rag = self._get_rag()
+            results = await rag.retrieve_law(
+                query=state["case_description"], top_k=8, recall_top_k=20
+            ) if hasattr(rag, "retrieve_law") else []
 
-        if not results:
-            raw = await self.rag.retrieve_clauses(
-                state["case_description"], top_k=8, recall_top_k=20
-            )
-            classified = self.rag.classify_retrieved_candidates(raw)
-            results = classified.get("laws") or []
-            # 如果合同库也没有法条，就把 evidences 也当作備选
             if not results:
-                results = classified.get("evidences") or []
+                raw = await rag.retrieve_clauses(
+                    state["case_description"], top_k=8, recall_top_k=20
+                )
+                classified = rag.classify_retrieved_candidates(raw)
+                results = classified.get("laws") or []
+                # 如果合同库也没有法条，就把 evidences 也当作备选
+                if not results:
+                    results = classified.get("evidences") or []
+        except Exception as e:
+            app_logger.warning(f"庭审 RAG 不可用，使用轻量模式继续: {e}")
+            results = []
 
         laws: List[Dict[str, str]] = []
         for idx, item in enumerate(results, 1):
@@ -231,14 +241,91 @@ class CourtDebateAgent:
             })
 
         if not laws:
-            laws.append({
-                "id": "law_1",
-                "title": "法律依据不足提示",
-                "content": "未检索到可用法条，请在发言中明确法条依据不足，禁止编造法律规则。",
-                "source": "系统提示",
-            })
+            laws = self._fallback_law_list(state["case_description"])
 
         return self._dedup_evidence_list(laws)
+
+    def _fallback_law_list(self, case_description: str) -> List[Dict[str, str]]:
+        """Return lightweight law references when the vector law library is unavailable.
+
+        These are article summaries rather than verbatim statutes, so the trial can
+        cite usable legal grounds without pretending a RAG hit happened.
+        """
+        text = case_description or ""
+        laws: List[Dict[str, str]] = []
+
+        def add(title: str, content: str, source: str = "内置常用法条摘要") -> None:
+            laws.append({
+                "id": f"law_{len(laws) + 1}",
+                "title": title,
+                "content": content,
+                "source": source,
+                "party": "both",
+            })
+
+        def add_contract_basics() -> None:
+            add(
+                "《民法典》第五百零九条（合同履行原则）",
+                "当事人应当按照约定全面履行自己的义务，并遵循诚信原则。可用于评价出租人、承租人或合同双方是否按约履行。",
+            )
+            add(
+                "《民法典》第五百七十七条（违约责任）",
+                "一方不履行合同义务或者履行不符合约定的，应承担继续履行、采取补救措施或者赔偿损失等违约责任。",
+            )
+            add(
+                "《民法典》第五百八十四条（损失赔偿范围）",
+                "违约造成损失的，赔偿额通常相当于因违约所造成的损失，包括合同履行后可以获得的利益，但不得超过订立合同时可预见的损失。",
+            )
+
+        if re.search(r"租赁|租金|房东|房屋|押金|转租|搬离|停水|停电|换锁", text):
+            add_contract_basics()
+            add(
+                "《民法典》第七百零三条（租赁合同定义）",
+                "租赁合同是出租人将租赁物交付承租人使用、收益，承租人支付租金的合同。可作为房屋租赁关系的基础依据。",
+            )
+            add(
+                "《民法典》第七百零八条（出租人交付和保持租赁物义务）",
+                "出租人应按约定将租赁物交付承租人，并在租赁期限内保持租赁物符合约定用途。",
+            )
+            add(
+                "《民法典》第七百一十六条（转租规则）",
+                "承租人经出租人同意可以转租；未经同意转租的，出租人可依法解除合同。是否构成转租需结合实际占有、收益和约定判断。",
+            )
+        elif re.search(r"劳动|仲裁|工资|加班|辞退|解除|社保|年休假|竞业|N\+1|补偿", text, re.I):
+            add(
+                "《劳动合同法》第四十条（无过失性辞退）",
+                "特定情形下，用人单位提前三十日书面通知劳动者本人或者额外支付一个月工资后，可以解除劳动合同。",
+            )
+            add(
+                "《劳动合同法》第四十六条（经济补偿情形）",
+                "规定用人单位应向劳动者支付经济补偿的主要情形，包括部分解除、终止劳动合同场景。",
+            )
+            add(
+                "《劳动合同法》第四十七条（经济补偿计算）",
+                "经济补偿按劳动者在本单位工作的年限，每满一年支付一个月工资；六个月以上不满一年按一年计算，不满六个月支付半个月工资。",
+            )
+            add(
+                "《劳动合同法》第八十七条（违法解除赔偿金）",
+                "用人单位违法解除或终止劳动合同的，应按经济补偿标准的二倍向劳动者支付赔偿金。",
+            )
+        elif re.search(r"借款|借条|民间借贷|利息|本金|还款", text):
+            add_contract_basics()
+            add(
+                "《民法典》第六百六十七条（借款合同定义）",
+                "借款合同是借款人向贷款人借款，到期返还借款并支付利息的合同。",
+            )
+            add(
+                "《民法典》第六百七十五条（返还借款期限）",
+                "借款人应当按照约定期限返还借款；期限不明确的，应结合补充协议、交易习惯等确定。",
+            )
+        else:
+            add_contract_basics()
+            add(
+                "《民事诉讼法》第六十七条（举证责任）",
+                "当事人对自己提出的主张，有责任提供证据。模拟庭审中可用于提示双方围绕主张提交证据。",
+            )
+
+        return laws
 
     async def _ensure_evidence_list(self, state: CourtState) -> List[Dict[str, str]]:
         existing = state.get("evidence_list") or []
@@ -970,6 +1057,7 @@ class CourtDebateAgent:
 
         active_node: str | None = None
         evidence_emitted = False
+        law_emitted = False
         message_counter = 0
         active_msg_id_by_node: Dict[str, str] = {}
 
@@ -1028,16 +1116,16 @@ class CourtDebateAgent:
                             "role": role_info.get("role", ""),
                         }
 
-            if ev_type == "on_chain_end" and node_name and not evidence_emitted:
+            if ev_type == "on_chain_end" and node_name and (not evidence_emitted or not law_emitted):
                 try:
                     snap = await self.graph.aget_state(config)
                     ev_list = (snap.values or {}).get("evidence_list") or []
                     law_items = (snap.values or {}).get("law_list") or []
-                    if ev_list or law_items:
-                        evidence_emitted = True
                     if ev_list:
+                        evidence_emitted = True
                         yield {"type": "evidence_list", "evidence_list": ev_list}
                     if law_items:
+                        law_emitted = True
                         yield {"type": "law_list", "law_list": law_items}
                 except Exception:
                     pass

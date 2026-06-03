@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { Send, Download, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -15,6 +16,108 @@ const QUICK_PROMPTS = [
   '竞业限制协议无效的判定标准？',
   '公司单方调岗降薪是否合法？',
 ];
+
+const INLINE_HINT_PATTERN = /\[(法条|术语|关键词):([^\]|]+)(?:\|([^\]]+))?\]/g;
+
+interface HintInfo {
+  title: string;
+  body: string;
+  note?: string;
+}
+
+const LEGAL_HINTS: Record<string, HintInfo> = {
+  'N+1': {
+    title: '关键词：N+1',
+    body: '劳动争议语境下通常指经济补偿金 N 个月加 1 个月工资的代通知金。',
+    note: '是否适用取决于解除理由、通知方式、工作年限、月工资口径和当地裁审尺度。',
+  },
+  '2N': {
+    title: '关键词：2N',
+    body: '通常用于描述违法解除或终止劳动合同后的赔偿金计算口径，即按经济补偿标准的二倍支付。',
+    note: '先判断解除是否违法，再判断劳动者选择继续履行还是主张赔偿金。',
+  },
+  '经济补偿金': {
+    title: '关键词：经济补偿金',
+    body: '用人单位在法定情形下解除或终止劳动合同时，按劳动者在本单位工作年限和月工资标准支付的补偿。',
+  },
+  '代通知金': {
+    title: '关键词：代通知金',
+    body: '部分无过失性辞退场景中，用人单位未提前三十日书面通知劳动者时，可能需要额外支付一个月工资。',
+  },
+  '劳动仲裁': {
+    title: '关键词：劳动仲裁',
+    body: '劳动争议通常需要先申请劳动仲裁。对仲裁裁决不服的，符合条件时再向人民法院起诉。',
+  },
+  '违法解除': {
+    title: '关键词：违法解除',
+    body: '用人单位解除劳动合同不符合法定理由、程序或证据要求时，可能构成违法解除。',
+  },
+  '退赃': {
+    title: '关键词：退赃',
+    body: '刑事案件中主动退还违法所得、返还被害人财物或赔偿损失的行为。',
+    note: '退赃通常可作为酌定从宽情节，但是否从轻、减轻以及幅度，要结合罪名、金额、时间节点、是否取得谅解等因素判断。',
+  },
+  '从轻处罚': {
+    title: '关键词：从轻处罚',
+    body: '在法定刑幅度内选择相对较轻的刑种或刑期。',
+  },
+  '减轻处罚': {
+    title: '关键词：减轻处罚',
+    body: '在法定最低刑以下判处刑罚，通常需要明确的法定减轻情节。',
+  },
+  '竞业限制': {
+    title: '关键词：竞业限制',
+    body: '用人单位与负有保密义务的劳动者约定离职后一定期限内不得从事竞争业务，并支付经济补偿的安排。',
+  },
+  '举证责任': {
+    title: '关键词：举证责任',
+    body: '谁主张、谁举证是基本规则；劳动争议中部分管理资料由用人单位掌握时，单位可能承担更高证明责任。',
+  },
+};
+
+const LAW_HINTS: Record<string, HintInfo> = {
+  '中华人民共和国刑法第67条': {
+    title: '《中华人民共和国刑法》第一编 总则 第四章 刑罚的具体运用 第三节 自首和立功 第六十七条',
+    body: '犯罪以后自动投案，如实供述自己的罪行的，是自首。对于自首的犯罪分子，可以从轻或者减轻处罚。其中，犯罪较轻的，可以免除处罚。\n\n被采取强制措施的犯罪嫌疑人、被告人和正在服刑的罪犯，如实供述司法机关还未掌握的本人其他罪行的，以自首论。\n\n犯罪嫌疑人虽不具有前两款规定的自首情节，但是如实供述自己罪行的，可以从轻处罚；因其如实供述自己罪行，避免特别严重后果发生的，可以减轻处罚。',
+    note: '同案犯退赃本身不等同于自首；若同时存在主动投案、如实供述、坦白、退赔退赃等情节，量刑时会综合评价。',
+  },
+  '刑法第67条': {
+    title: '《中华人民共和国刑法》第一编 总则 第四章 刑罚的具体运用 第三节 自首和立功 第六十七条',
+    body: '犯罪以后自动投案，如实供述自己的罪行的，是自首。对于自首的犯罪分子，可以从轻或者减轻处罚。其中，犯罪较轻的，可以免除处罚。\n\n被采取强制措施的犯罪嫌疑人、被告人和正在服刑的罪犯，如实供述司法机关还未掌握的本人其他罪行的，以自首论。\n\n犯罪嫌疑人虽不具有前两款规定的自首情节，但是如实供述自己罪行的，可以从轻处罚；因其如实供述自己罪行，避免特别严重后果发生的，可以减轻处罚。',
+    note: '常用于判断自首、准自首、坦白及其从宽幅度。',
+  },
+  '中华人民共和国刑法第68条': {
+    title: '《中华人民共和国刑法》第一编 总则 第四章 刑罚的具体运用 第三节 自首和立功 第六十八条',
+    body: '犯罪分子有揭发他人犯罪行为，查证属实的，或者提供重要线索，从而得以侦破其他案件等立功表现的，可以从轻或者减轻处罚；有重大立功表现的，可以减轻或者免除处罚。',
+  },
+  '刑法第68条': {
+    title: '《中华人民共和国刑法》第一编 总则 第四章 刑罚的具体运用 第三节 自首和立功 第六十八条',
+    body: '犯罪分子有揭发他人犯罪行为，查证属实的，或者提供重要线索，从而得以侦破其他案件等立功表现的，可以从轻或者减轻处罚；有重大立功表现的，可以减轻或者免除处罚。',
+  },
+  '劳动合同法第40条': {
+    title: '《中华人民共和国劳动合同法》第四章 劳动合同的解除和终止 第四十条',
+    body: '有下列情形之一的，用人单位提前三十日以书面形式通知劳动者本人或者额外支付劳动者一个月工资后，可以解除劳动合同：\n（一）劳动者患病或者非因工负伤，在规定的医疗期满后不能从事原工作，也不能从事由用人单位另行安排的工作的；\n（二）劳动者不能胜任工作，经过培训或者调整工作岗位，仍不能胜任工作的；\n（三）劳动合同订立时所依据的客观情况发生重大变化，致使劳动合同无法履行，经用人单位与劳动者协商，未能就变更劳动合同内容达成协议的。',
+  },
+  '劳动合同法第46条': {
+    title: '《中华人民共和国劳动合同法》第四章 劳动合同的解除和终止 第四十六条',
+    body: '第四十六条列明用人单位应当向劳动者支付经济补偿的情形，包括劳动者依第三十八条解除、用人单位依第三十六条协商解除、依第四十条或第四十一条解除、劳动合同期满终止等法定场景。',
+    note: '具体是否落入第四十六条，要结合解除原因和程序判断。',
+  },
+  '劳动合同法第47条': {
+    title: '《中华人民共和国劳动合同法》第四章 劳动合同的解除和终止 第四十七条',
+    body: '经济补偿按劳动者在本单位工作的年限，每满一年支付一个月工资的标准向劳动者支付。六个月以上不满一年的，按一年计算；不满六个月的，向劳动者支付半个月工资的经济补偿。\n\n劳动者月工资高于用人单位所在直辖市、设区的市级人民政府公布的本地区上年度职工月平均工资三倍的，向其支付经济补偿的标准按职工月平均工资三倍的数额支付，向其支付经济补偿的年限最高不超过十二年。\n\n本条所称月工资是指劳动者在劳动合同解除或者终止前十二个月的平均工资。',
+  },
+  '劳动合同法第87条': {
+    title: '《中华人民共和国劳动合同法》第七章 法律责任 第八十七条',
+    body: '用人单位违反本法规定解除或者终止劳动合同的，应当依照本法第四十七条规定的经济补偿标准的二倍向劳动者支付赔偿金。',
+  },
+};
+
+const HINT_TERMS = [...Object.keys(LAW_HINTS), ...Object.keys(LEGAL_HINTS)].sort((a, b) => b.length - a.length);
+
+function normalizeHintKey(kind: string, label: string) {
+  return `${kind}:${label.replace(/[《》\s]/g, '')}`;
+}
 
 interface ToolCall {
   name: string;
@@ -63,6 +166,132 @@ interface ChatSseEvent {
   snippet?: string;
   error_code?: string;
   error_message?: string;
+}
+
+function getHintDetail(kind: string, label: string, detail?: string) {
+  const known = kind === '法条' ? LAW_HINTS[label] : LEGAL_HINTS[label];
+  if (known) return known;
+  return {
+    title: `${kind}：${label}`,
+    body: detail || (kind === '法条'
+      ? '该法条需要结合现行法律文本、司法解释和案件事实核对适用。'
+      : '该关键词需要结合具体事实理解，建议关注适用条件、证明材料和当地裁判口径。'),
+  };
+}
+
+function HintChip({
+  kind,
+  label,
+  detail,
+}: {
+  kind: '法条' | '术语' | '关键词';
+  label: string;
+  detail?: string;
+}) {
+  const finalDetail = getHintDetail(kind, label, detail);
+  const isLaw = kind === '法条';
+  return (
+    <span className="group relative inline-flex cursor-help items-center rounded-md border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[0.95em] font-semibold text-blue-700 dark:border-blue-800/70 dark:bg-blue-950/40 dark:text-blue-200">
+      {label}
+      <span className={`pointer-events-none absolute left-0 top-full z-30 mt-2 hidden max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-3 text-left text-xs font-normal leading-relaxed text-slate-700 shadow-xl group-hover:block dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 ${isLaw ? 'w-[30rem]' : 'w-80'}`}>
+        <span className="mb-1 block text-[11px] font-semibold text-blue-700 dark:text-blue-200">
+          {finalDetail.title}
+        </span>
+        <span className="block whitespace-pre-wrap">{finalDetail.body}</span>
+        {finalDetail.note && (
+          <span className="mt-2 block rounded-md bg-slate-50 px-2 py-1.5 text-[11px] text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+            {finalDetail.note}
+          </span>
+        )}
+      </span>
+    </span>
+  );
+}
+
+function renderHintText(text: string, keyPrefix: string, seenHints: Set<string>): ReactNode[] {
+  const result: ReactNode[] = [];
+  let lastIndex = 0;
+  INLINE_HINT_PATTERN.lastIndex = 0;
+
+  const pushAutoLinkedText = (plain: string, prefix: string) => {
+    let cursor = 0;
+    let partIndex = 0;
+    while (cursor < plain.length) {
+      const match = HINT_TERMS
+        .map((term) => ({ term, index: plain.indexOf(term, cursor) }))
+        .filter((item) => item.index >= 0)
+        .sort((a, b) => a.index - b.index || b.term.length - a.term.length)[0];
+
+      if (!match) {
+        if (cursor < plain.length) result.push(plain.slice(cursor));
+        break;
+      }
+
+      if (match.index > cursor) {
+        result.push(plain.slice(cursor, match.index));
+      }
+
+      const kind = LAW_HINTS[match.term] ? '法条' : '关键词';
+      const seenKey = normalizeHintKey(kind, match.term);
+      if (seenHints.has(seenKey)) {
+        result.push(match.term);
+      } else {
+        seenHints.add(seenKey);
+        result.push(
+          <HintChip
+            key={`${prefix}-auto-${partIndex}`}
+            kind={kind}
+            label={match.term}
+          />
+        );
+      }
+      cursor = match.index + match.term.length;
+      partIndex += 1;
+    }
+  };
+
+  let match: RegExpExecArray | null;
+  let tokenIndex = 0;
+  while ((match = INLINE_HINT_PATTERN.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      pushAutoLinkedText(text.slice(lastIndex, match.index), `${keyPrefix}-${tokenIndex}`);
+    }
+    const kind = match[1] as '法条' | '术语' | '关键词';
+    const label = match[2].trim();
+    const detail = match[3]?.trim();
+    const seenKey = normalizeHintKey(kind, label);
+    if (seenHints.has(seenKey)) {
+      result.push(label);
+    } else {
+      seenHints.add(seenKey);
+      result.push(
+        <HintChip
+          key={`${keyPrefix}-token-${tokenIndex}`}
+          kind={kind}
+          label={label}
+          detail={detail}
+        />
+      );
+    }
+    lastIndex = match.index + match[0].length;
+    tokenIndex += 1;
+  }
+
+  if (lastIndex < text.length) {
+    pushAutoLinkedText(text.slice(lastIndex), `${keyPrefix}-tail`);
+  }
+
+  return result;
+}
+
+function renderInlineHints(children: ReactNode, seenHints: Set<string>, keyPrefix = 'hint'): ReactNode {
+  if (typeof children === 'string') return renderHintText(children, keyPrefix, seenHints);
+  if (Array.isArray(children)) {
+    return children.map((child, index) =>
+      typeof child === 'string' ? renderHintText(child, `${keyPrefix}-${index}`, seenHints) : child
+    );
+  }
+  return children;
 }
 
 export default function ChatPage() {
@@ -535,9 +764,9 @@ export default function ChatPage() {
           </aside>
         </div>
       )}
-      {/* 主聊天区域 - 水平居中、单列布局 */}
+      {/* 主聊天区域 - 宽阅读布局 */}
       <div className="flex flex-1 w-full flex-col items-center overflow-y-auto">
-        <div className="w-full max-w-4xl px-4 py-8">
+        <div className="w-full max-w-7xl px-4 py-8 md:px-8">
           {localMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 animate-fadeIn">
               <div className="mb-8 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-legal shadow-lg">
@@ -586,27 +815,32 @@ export default function ChatPage() {
                   key={index}
                   className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fadeIn`}
                 >
-                  {/* AI Avatar */}
                   {message.role === 'assistant' && (
-                    <div className="mr-3 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-legal">
-                      <ScaleIcon size={16} className="text-white" />
+                    <div className="mr-3 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-blue-200 bg-blue-600 shadow-md shadow-blue-100 ring-4 ring-blue-50 dark:border-blue-900/60 dark:bg-gradient-legal dark:shadow-sm dark:shadow-none dark:ring-blue-950/40">
+                      <ScaleIcon size={19} className="text-white drop-shadow-[0_1px_2px_rgba(15,23,42,0.35)]" />
                     </div>
                   )}
 
                   {/* Message Bubble */}
                   <div
-                    className={`max-w-[80%] rounded-lg px-4 py-3 ${
+                    className={`rounded-lg px-4 py-3 ${
                       message.role === 'user'
-                        ? 'bg-muted text-foreground'
+                        ? 'max-w-[82%] bg-muted text-foreground md:max-w-[760px]'
                         : message.isError
-                        ? 'border border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400'
-                        : 'bg-card border border-border'
+                        ? 'w-full max-w-[980px] border border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400'
+                        : 'w-full max-w-[980px] bg-card border border-border shadow-sm'
                     }`}
                   >
                     {message.role === 'user' ? (
                       <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
                     ) : (
                       <div>
+                        <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                          <span>SparkLaw Agent</span>
+                          <span className="h-1 w-1 rounded-full bg-slate-300 dark:bg-slate-600" />
+                          <span>法律咨询助手</span>
+                        </div>
+
                         {/* 深度思考链路（与正式回答分区显示） */}
                         {message.thinking && (
                           <details
@@ -732,10 +966,23 @@ export default function ChatPage() {
                             <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">{message.content}</pre>
                           </div>
                         ) : (
-                          <div className="prose prose-sm md:prose-base dark:prose-invert max-w-none">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                              {message.content}
-                            </ReactMarkdown>
+                          <div className="prose prose-sm md:prose-base dark:prose-invert max-w-none prose-p:leading-8 prose-li:leading-8 prose-headings:mb-2 prose-headings:mt-4">
+                            {(() => {
+                              const seenHints = new Set<string>();
+                              return (
+                                <ReactMarkdown
+                                  remarkPlugins={[remarkGfm]}
+                                  components={{
+                                    p: ({ children }) => <p>{renderInlineHints(children, seenHints)}</p>,
+                                    li: ({ children }) => <li>{renderInlineHints(children, seenHints)}</li>,
+                                    strong: ({ children }) => <strong>{renderInlineHints(children, seenHints)}</strong>,
+                                    em: ({ children }) => <em>{renderInlineHints(children, seenHints)}</em>,
+                                  }}
+                                >
+                                  {message.content}
+                                </ReactMarkdown>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>

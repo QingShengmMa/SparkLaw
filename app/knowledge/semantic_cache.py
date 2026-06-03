@@ -10,7 +10,6 @@ from datetime import datetime, timedelta
 
 from app.core.config import settings
 from app.core.logger import app_logger
-from app.knowledge.stores.vector_store_qdrant import VectorStoreAdapter
 
 
 class SemanticCacheManager:
@@ -46,6 +45,8 @@ class SemanticCacheManager:
             return
         
         try:
+            from app.knowledge.stores.vector_store_qdrant import VectorStoreAdapter
+
             app_logger.info(f"🔄 正在初始化语义缓存，阈值: {self.threshold}")
             self.cache_store = VectorStoreAdapter(
                 persist_directory=self.persist_directory,

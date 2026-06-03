@@ -380,7 +380,8 @@ async def chat(
         )
 
         initial_state: LegalAgentGraphState = {"messages": messages}
-        config = {"configurable": {"thread_id": thread_id}} if thread_id else None
+        effective_thread_id = thread_id or session_id
+        config = {"configurable": {"thread_id": effective_thread_id}}
         final_state = await (graph_to_use.ainvoke(initial_state, config=config) if config else graph_to_use.ainvoke(initial_state))
         final_msg = final_state["messages"][-1]
         answer = final_msg.content if hasattr(final_msg, "content") else str(final_msg)

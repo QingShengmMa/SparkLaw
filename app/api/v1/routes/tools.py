@@ -143,6 +143,111 @@ def _friendly_stream_error_message(error_text: str) -> str:
     return text
 
 
+def _fallback_laws_for_case(case_description: str) -> list[dict[str, str]]:
+    text = case_description or ""
+    if re.search(r"劳动|社保|加班|工资|解除|辞退|补偿|仲裁", text):
+        return [
+            {
+                "id": "law_1",
+                "title": "《劳动合同法》第四十条",
+                "content": "特定情形下，用人单位提前三十日书面通知劳动者本人或者额外支付劳动者一个月工资后，可以解除劳动合同。",
+                "source": "轻量兜底法条",
+                "party": "both",
+            },
+            {
+                "id": "law_2",
+                "title": "《劳动合同法》第四十六条",
+                "content": "规定用人单位应当向劳动者支付经济补偿的主要情形。",
+                "source": "轻量兜底法条",
+                "party": "both",
+            },
+            {
+                "id": "law_3",
+                "title": "《劳动合同法》第四十七条",
+                "content": "经济补偿按劳动者在本单位工作的年限，每满一年支付一个月工资；六个月以上不满一年按一年计算，不满六个月支付半个月工资。",
+                "source": "轻量兜底法条",
+                "party": "both",
+            },
+        ]
+
+    return [
+        {
+            "id": "law_1",
+            "title": "《民法典》第五百零九条",
+            "content": "当事人应当按照约定全面履行自己的义务，并遵循诚信原则。",
+            "source": "轻量兜底法条",
+            "party": "both",
+        },
+        {
+            "id": "law_2",
+            "title": "《民法典》第五百七十七条",
+            "content": "一方不履行合同义务或者履行不符合约定的，应承担继续履行、采取补救措施或者赔偿损失等违约责任。",
+            "source": "轻量兜底法条",
+            "party": "both",
+        },
+    ]
+
+
+def _evidence_refs_from_items(evidence: list) -> list[dict[str, str]]:
+    refs: list[dict[str, str]] = []
+    for idx, item in enumerate(evidence or [], 1):
+        party = str(item.get("party") or "plaintiff").strip().lower()
+        refs.append({
+            "id": str(item.get("id") or f"evidence_{idx}"),
+            "title": str(item.get("name") or f"证据{idx}"),
+            "content": str(item.get("desc") or ""),
+            "source": "庭审材料",
+            "party": "defendant" if party == "defendant" else "plaintiff",
+        })
+    return refs
+
+
+async def _yield_fallback_court_events(case_description: str, evidence: list, reason: str):
+    laws = _fallback_laws_for_case(case_description)
+    evidences = _evidence_refs_from_items(evidence)
+    yield {"type": "evidence_list", "evidence_list": evidences}
+    yield {"type": "law_list", "law_list": laws}
+
+    opening = (
+        f"【开庭准备】因云端模型暂时不可用，已启用轻量庭审兜底模式。原因：{reason}\n\n"
+        f"本庭现在核对案由并进入开庭准备。案情摘要：{case_description[:180]}...\n\n"
+        "本阶段先明确争议焦点：劳动关系存续、社保与加班事实、工资或补偿计算依据，以及双方证据能否形成完整证明链。"
+    )
+    plaintiff = (
+        "【法庭调查·原告】原告方主张其在公司连续工作并存在社保、加班或劳动报酬争议。"
+        "原告可围绕劳动合同、工资流水、考勤记录、社保缴纳记录等材料举证。"
+        f"如涉及经济补偿或解除争议，可先引用 [法条:{laws[1]['id']}] 与 [法条:{laws[2]['id']}] 作为请求权基础。"
+    )
+    defendant = (
+        "【法庭调查·被告】被告方应说明用工管理、考勤制度、工资发放、社保缴纳及加班审批规则。"
+        "如主张不存在欠缴或加班，应提交制度公告、考勤系统导出、工资明细、社保记录等相反证据。"
+    )
+
+    messages = [
+        ("fallback_opening", "法官", "judge", "opening", opening),
+        ("fallback_plaintiff", "原告律师", "plaintiff", "investigation", plaintiff),
+        ("fallback_defendant", "被告律师", "defendant", "investigation", defendant),
+    ]
+    for msg_id, role, role_key, phase, content in messages:
+        yield {
+            "type": "new_message",
+            "msg_id": msg_id,
+            "role": role,
+            "role_key": role_key,
+            "phase": phase,
+        }
+        yield {
+            "type": "chunk",
+            "msg_id": msg_id,
+            "role": role,
+            "role_key": role_key,
+            "phase": phase,
+            "content": content,
+        }
+        for law in re.findall(r"\[法条:(law_\d+)\]", content):
+            yield {"type": "law_reference", "law_id": law, "role": role}
+
+
 class ContractReviewStreamRequest(BaseModel):
     contract_id: Optional[str] = Field(default=None, description="已上传合同的 contract_id")
     contract_text: Optional[str] = Field(default=None, description="直接传入的合同文本")
@@ -369,6 +474,9 @@ async def court_debate(
             app_logger.error(f"庭审流式输出错误: {e}")
             friendly_msg = _friendly_stream_error_message(str(e))
             yield f"data: {json.dumps({'type':'error','message': friendly_msg}, ensure_ascii=False)}\n\n"
+            if "rate" in str(e).lower() or "429" in str(e):
+                async for event in _yield_fallback_court_events(request.case_description, request.human_evidence or [], friendly_msg):
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -400,5 +508,8 @@ async def court_debate_rejudge(
             app_logger.error(f"重新开庭流式输出错误: {e}")
             friendly_msg = _friendly_stream_error_message(str(e))
             yield f"data: {json.dumps({'type':'error','message': friendly_msg}, ensure_ascii=False)}\n\n"
+            if "rate" in str(e).lower() or "429" in str(e):
+                async for event in _yield_fallback_court_events(request.case_description, request.human_evidence or [], friendly_msg):
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream") 

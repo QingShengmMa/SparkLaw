@@ -70,7 +70,7 @@ class LegalAgentService:
         try:
             self.llm = LLMFactory.create_llm()
             self.tools = get_tools(enable_search=settings.ENABLE_WEB_SEARCH, enable_calculator=True)
-            self.rag_service = get_rag_service()
+            self.rag_service = None
             self.sessions: Dict[str, List[Dict]] = {}
             self.system_prompt = self._get_system_prompt()
             self.llm_with_tools = self.llm.bind_tools(self.tools)
@@ -82,6 +82,11 @@ class LegalAgentService:
         except Exception as e:
             app_logger.error(f"❌ 法律 Agent 服务初始化失败: {str(e)}")
             raise
+
+    def _get_rag_service(self):
+        if self.rag_service is None:
+            self.rag_service = get_rag_service()
+        return self.rag_service
 
     def _get_system_prompt(self, personality: PersonalityType = "machine", deep_think: bool = False) -> str:
         if deep_think:
@@ -99,6 +104,12 @@ class LegalAgentService:
 **输出约束：**
 - 用户未提供合同原文/截图/文件时，禁止输出"条款一/条款二"这类具体条文分析。
 - 需要分析合同时，先向用户索取合同文本。
+- 默认回答要比一句话咨询更完整。除非用户明确要求简短，否则请按"结论摘要、适用规则、计算/判断方法、风险提示、下一步建议"组织，给出必要的例子和注意事项。
+- 对劳动、刑事、合同等常见法律问题，尽量说明关键构成要件、证据材料、可能结果和实务口径；事实不足时先列明假设，不要编造用户未提供的事实。
+- 可以引用明确且常见的法律依据；如果无法确认条文原文，必须写"需核对现行法条原文"，不要虚构具体条文内容。
+- 为便于前端展示悬浮解释，请把重要术语写成[关键词:关键词名称|简短解释]，把确定的法条写成[法条:法律名称第X条|第几编/章/节、第几条、条文主要内容、适用提示]。
+- 同一关键词或同一法条在同一回答中只需要第一次使用标记格式，后续直接写普通文本，避免满屏重复提示。
+- 法条引用应尽量完整到法律名称和条号，例如"中华人民共和国刑法第67条"、"劳动合同法第47条"；能确认条文时应给出条文核心内容，不能确认时明确写"需核对现行法条原文"。
 
 """
         return base + PERSONALITY_PROMPTS.get(personality, PERSONALITY_PROMPTS["machine"])
@@ -116,9 +127,10 @@ class LegalAgentService:
         ⚠️ 防幻觉机制：如果检索结果为空，返回明确标记而非空字符串
         """
         try:
-            results = await self.rag_service.retrieve_law(query=question, top_k=top_k)
+            rag_service = self._get_rag_service()
+            results = await rag_service.retrieve_law(query=question, top_k=top_k)
             if not results:
-                results = await self.rag_service.retrieve_clauses(query=question, top_k=top_k)
+                results = await rag_service.retrieve_clauses(query=question, top_k=top_k)
             
             # ✅ 核心防幻觉逻辑：检索为空时返回明确标记
             if not results or len(results) == 0:
