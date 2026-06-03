@@ -125,7 +125,8 @@ SparkLaw/
 │  └─ store/                           # Frontend state management
 ├─ tests/                              # Backend API and service-level tests
 ├─ eval/                               # Evaluation dataset + scripts
-└─ docker-compose.yml                  # Local container orchestration
+├─ docker-compose.yml                  # Standard Docker stack: backend + frontend + Redis + Qdrant
+└─ docker-compose.lite.yml             # Lightweight Docker stack for small 2C/2G servers
 ```
 
 ### Core Request Flow (Simplified)
@@ -140,100 +141,13 @@ SparkLaw/
 
 ## 🚀 Quick Start
 
-Two deployment options are available. **Docker is recommended** — no manual environment setup required.
+Three startup options are available: manual local development, standard Docker, and lightweight Docker. Use manual local setup for development; use Docker for server deployment.
 
 ---
 
-### Option 1: Docker (Recommended)
+### Option 1: Manual Local Setup (Recommended for Development)
 
-**Prerequisites:** Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (includes Docker Compose).
-
-#### 1. Clone the repository
-
-```bash
-git clone https://github.com/QingShengmMa/SparkLaw.git
-cd SparkLaw
-```
-
-#### 2. Configure environment variables
-
-```bash
-cp .env.example .env
-# Open .env and fill in at minimum:
-# OPENAI_API_KEY=sk-your_key_here
-# OPENAI_BASE_URL=https://api.openai.com/v1   # supports DeepSeek / Qwen / etc.
-# OPENAI_MODEL=gpt-4o-mini
-```
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `LLM_MODE` | `cloud` (OpenAI-compatible) or `local` (Ollama) | `cloud` |
-| `OPENAI_API_KEY` | Your API key | — |
-| `OPENAI_BASE_URL` | API endpoint | `https://api.openai.com/v1` |
-| `OPENAI_MODEL` | Model name | `gpt-4o-mini` |
-| `OLLAMA_BASE_URL` | Local Ollama address (local mode) | `http://host.docker.internal:11434` |
-
-#### 3. Start all services
-
-```bash
-docker compose up -d --build
-```
-
-#### Stable Docker workaround (recommended)
-
-If your network intermittently fails to pull manifests/layers (e.g. `content size of zero`), use fixed image tags and pre-pull once:
-
-```bash
-docker pull redis:7.4.2-alpine
-docker pull node:20.18.3-bookworm-slim
-docker compose up -d --build
-```
-
-#### Stable Docker workaround (recommended)
-
-If your network intermittently fails to pull manifests/layers (e.g. `content size of zero`), use fixed image tags and pre-pull once:
-
-```bash
-docker pull redis:7.4.2
-docker pull node:20.18.3-bookworm-slim
-docker compose up -d --build
-```
-
-#### Stable Docker workaround (recommended)
-
-If your network intermittently fails to pull manifests/layers (e.g. `content size of zero`), use fixed image tags and pre-pull once:
-
-```bash
-docker pull redis:7.4.2
-docker pull node:20.18.3-bookworm-slim
-docker compose up -d --build
-```
-
-#### Stable Docker workaround (recommended)
-
-If your network intermittently fails to pull manifests/layers (e.g. `content size of zero`), use fixed image tags and pre-pull once:
-
-```bash
-docker pull redis:7.4.2
-docker pull node:20.18.3-bookworm-slim
-docker compose up -d --build
-```
-
-First build takes 3–8 minutes depending on network speed. Subsequent restarts are near-instant.
-
-#### 4. Access the app
-
-| Service | URL |
-|---------|-----|
-| 🌐 Frontend | http://localhost:3000 |
-| ⚙️ Backend API | http://localhost:8000 |
-| 📖 API Docs | http://localhost:8000/docs |
-
----
-
-### Option 2: Manual Local Setup
-
-**Prerequisites:** Python 3.10+, Node.js 18+, (optional) Redis 6+, (optional) Ollama
+**Prerequisites:** Python 3.10+, Node.js 18+, optional Redis 6+, optional Qdrant, optional Ollama
 
 #### 1. Clone the repository
 
@@ -254,12 +168,30 @@ cp .env.local.example .env.local
 cd ..
 ```
 
+Open `.env` and configure at least one available cloud model key, such as `GROQ_API_KEY`, `DEEPSEEK_API_KEY`, or `OPENAI_API_KEY`. The default provider order is `groq,deepseek`; SparkLaw automatically falls back from Groq to DeepSeek when needed. OpenAI-compatible settings are used when Groq/DeepSeek are not configured.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `LLM_MODE` | `cloud` (OpenAI-compatible) or `local` (Ollama) | `cloud` |
+| `LLM_PROVIDER_ORDER` | Cloud provider order | `groq,deepseek` |
+| `GROQ_API_KEY` | Groq API key | — |
+| `DEEPSEEK_API_KEY` | DeepSeek API key | — |
+| `OPENAI_API_KEY` | OpenAI or compatible API key | — |
+| `OPENAI_BASE_URL` | OpenAI-compatible API endpoint | `https://api.openai.com/v1` |
+| `OLLAMA_BASE_URL` | Local Ollama address (local mode) | `http://localhost:11434` |
+| `ENABLE_SEMANTIC_MEMORY` | Enable semantic memory / embedding model | `true` |
+| `ENABLE_SEMANTIC_CACHE` | Enable semantic cache | `true` |
+| `SEMANTIC_CACHE_THRESHOLD` | Cache similarity threshold (0-1) | `0.92` |
+| `SEMANTIC_CACHE_TTL_DAYS` | Cache TTL in days | `30` |
+
 #### 3. Start the backend
 
 ```bash
 python -m venv venv
+
 # Windows
 venv\Scripts\activate
+
 # macOS / Linux
 # source venv/bin/activate
 
@@ -269,10 +201,86 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 #### 4. Start the frontend
 
+Open another terminal:
+
 ```bash
 cd frontend
 npm install
 npm run dev
+```
+
+Open: `http://localhost:3000`
+
+---
+
+### Option 2: Docker One-Command Startup (Standard Deployment)
+
+**Prerequisites:** Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (includes Docker Compose).
+
+The standard stack starts frontend, backend, Redis, and Qdrant. It is suitable for full local evaluation or servers with enough memory.
+
+```bash
+# First copy and edit the environment file
+cp .env.example .env
+# Fill in at least one of GROQ_API_KEY, DEEPSEEK_API_KEY, or OPENAI_API_KEY
+
+# First build and start
+docker compose up -d --build
+
+# Daily startup
+docker compose up -d
+
+# Check status
+docker compose ps
+
+# Follow logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
+
+If your network intermittently fails to pull manifests/layers (e.g. `content size of zero`), pre-pull fixed image tags once:
+
+```bash
+docker pull redis:7.4.2-alpine
+docker pull qdrant/qdrant:v1.7.4
+docker pull node:20.18.3-bookworm-slim
+docker compose up -d --build
+```
+
+First build takes 3–8 minutes depending on network speed. Subsequent restarts are near-instant.
+
+#### 4. Access the app
+
+| Service | URL |
+|---------|-----|
+| 🌐 Frontend | http://localhost:3000 |
+| ⚙️ Backend API | http://localhost:8000 |
+| 📖 API Docs | http://localhost:8000/docs |
+| 🧠 Qdrant | http://localhost:6333 |
+
+---
+
+### Option 3: Lightweight Docker Startup (Recommended for Small Servers)
+
+The lightweight stack uses `requirements-lite.txt`, disables observability, semantic memory, and semantic cache by default, and starts only frontend + backend. It is intended for 2C/2G small servers.
+
+```bash
+cp .env.example .env
+# Fill in at least one of GROQ_API_KEY, DEEPSEEK_API_KEY, or OPENAI_API_KEY
+
+# First build and start the lightweight stack
+docker compose -f docker-compose.lite.yml up -d --build
+
+# Daily startup
+docker compose -f docker-compose.lite.yml up -d
+
+# Follow logs
+docker compose -f docker-compose.lite.yml logs -f
+
+# Stop
+docker compose -f docker-compose.lite.yml down
 ```
 
 Open: `http://localhost:3000`

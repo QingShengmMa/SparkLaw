@@ -179,7 +179,8 @@ SparkLaw/
 │  └─ store/                           # 前端状态管理
 ├─ tests/                              # 后端接口与服务测试
 ├─ eval/                               # 评测数据生成与评估脚本
-└─ docker-compose.yml                  # 本地容器化编排
+├─ docker-compose.yml                  # 标准 Docker 编排：后端 + 前端 + Redis + Qdrant
+└─ docker-compose.lite.yml             # 轻量 Docker 编排：适合 2C/2G 小服务器
 ```
 
 ### 核心请求链路（简化）
@@ -194,82 +195,13 @@ SparkLaw/
 
 ## 🚀 快速开始
 
-提供两种部署方式，推荐优先使用 Docker，无需手动配置环境。
+提供三种启动方式：本地开发、标准 Docker、轻量 Docker。日常开发推荐本地启动；服务器部署推荐 Docker。
 
 ---
 
-### 方式一：Docker 一键部署（推荐）
+### 方式一：本地手动启动（开发推荐）
 
-**前提：** 安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)（已内置 Docker Compose）。
-
-#### 1. 克隆仓库
-
-```bash
-git clone https://github.com/QingShengmMa/SparkLaw.git
-cd SparkLaw
-```
-
-#### 2. 配置环境变量
-
-```bash
-cp .env.example .env
-# 用编辑器打开 .env，至少填写以下字段：
-# OPENAI_API_KEY=sk-your_key_here
-# OPENAI_BASE_URL=https://api.openai.com/v1   # 支持 DeepSeek / Qwen 等兼容接口
-# OPENAI_MODEL=gpt-4o-mini
-```
-
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `LLM_MODE` | `cloud`（OpenAI 兼容）或 `local`（Ollama） | `cloud` |
-| `OPENAI_API_KEY` | 你的 API Key | — |
-| `OPENAI_BASE_URL` | API 地址 | `https://api.openai.com/v1` |
-| `OPENAI_MODEL` | 模型名 | `gpt-4o-mini` |
-| `OLLAMA_BASE_URL` | 本地 Ollama 地址（local 模式） | `http://host.docker.internal:11434` |
-| `ENABLE_SEMANTIC_CACHE` | 是否启用语义缓存（提升 40x 响应速度） | `true` |
-| `SEMANTIC_CACHE_THRESHOLD` | 缓存相似度阈值（0-1） | `0.92` |
-| `SEMANTIC_CACHE_TTL_DAYS` | 缓存过期时间（天） | `30` |
-
-#### 3. 一键启动
-
-```bash
-docker compose up -d --build
-# 日常启动
-docker compose up -d
-# 查看状态
-docker compose ps
-# 查看日志
-docker compose logs -f
-# 停止
-docker compose down
-```
-
-#### Docker 拉取异常的稳定方案（推荐）
-
-如果偶发 `content size of zero` 这类拉取错误，建议固定镜像版本并先手动拉取一次：
-
-```bash
-docker pull redis:7.4.2-alpine
-docker pull node:20.18.3-bookworm-slim
-docker compose up -d --build
-```
-
-首次构建约需 3–8 分钟（视网速），之后重启只需数秒。
-
-#### 4. 访问项目
-
-| 服务 | 地址 |
-|------|------|
-| 🌐 前端界面 | http://localhost:3000 |
-| ⚙️ 后端 API | http://localhost:8000 |
-| 📖 API 文档 | http://localhost:8000/docs |
-| 🔭 Phoenix 监控 | http://localhost:6006 |
-
----
-
-### 方式二：本地手动部署
-
-**前置要求：** Python 3.10+、Node.js 18+、（可选）Redis 6+、（可选）Ollama
+**前置要求：** Python 3.10+、Node.js 18+、（可选）Redis 6+、（可选）Qdrant、（可选）Ollama
 
 #### 1. 克隆项目
 
@@ -290,12 +222,30 @@ cp .env.local.example .env.local
 cd ..
 ```
 
+用编辑器打开 `.env`，至少填写一个可用的云端模型 Key，例如 `GROQ_API_KEY`、`DEEPSEEK_API_KEY` 或 `OPENAI_API_KEY`。默认调用顺序为 `groq,deepseek`，如果 Groq 不可用会自动回退 DeepSeek；未配置 Groq/DeepSeek 时可回退 OpenAI 兼容配置。
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `LLM_MODE` | `cloud`（OpenAI 兼容）或 `local`（Ollama） | `cloud` |
+| `LLM_PROVIDER_ORDER` | 云端模型调用顺序 | `groq,deepseek` |
+| `GROQ_API_KEY` | Groq API Key | — |
+| `DEEPSEEK_API_KEY` | DeepSeek API Key | — |
+| `OPENAI_API_KEY` | OpenAI 或兼容服务 API Key | — |
+| `OPENAI_BASE_URL` | OpenAI 兼容 API 地址 | `https://api.openai.com/v1` |
+| `OLLAMA_BASE_URL` | 本地 Ollama 地址（local 模式） | `http://localhost:11434` |
+| `ENABLE_SEMANTIC_MEMORY` | 是否启用语义记忆 / 向量模型 | `true` |
+| `ENABLE_SEMANTIC_CACHE` | 是否启用语义缓存 | `true` |
+| `SEMANTIC_CACHE_THRESHOLD` | 缓存相似度阈值（0-1） | `0.92` |
+| `SEMANTIC_CACHE_TTL_DAYS` | 缓存过期时间（天） | `30` |
+
 #### 3. 启动后端
 
 ```bash
 python -m venv venv
+
 # Windows
 venv\Scripts\activate
+
 # macOS / Linux
 # source venv/bin/activate
 
@@ -305,10 +255,83 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 #### 4. 启动前端
 
+另开一个终端：
+
 ```bash
 cd frontend
 npm install
 npm run dev
+```
+
+访问：`http://localhost:3000`
+
+---
+
+### 方式二：Docker 一键启动（标准部署）
+
+**前提：** 安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)（已内置 Docker Compose）。
+
+标准编排会启动前端、后端、Redis 和 Qdrant，适合本机完整体验或资源较充足的服务器。
+
+```bash
+cp .env.example .env
+# 编辑 .env，至少填写 GROQ_API_KEY、DEEPSEEK_API_KEY 或 OPENAI_API_KEY 之一
+
+# 首次构建并启动
+docker compose up -d --build
+
+# 日常启动
+docker compose up -d
+
+# 查看状态
+docker compose ps
+
+# 查看日志
+docker compose logs -f
+
+# 停止
+docker compose down
+```
+
+如果偶发 `content size of zero` 这类拉取错误，可以先手动拉取固定镜像版本：
+
+```bash
+docker pull redis:7.4.2-alpine
+docker pull qdrant/qdrant:v1.7.4
+docker pull node:20.18.3-bookworm-slim
+docker compose up -d --build
+```
+
+#### 访问地址
+
+| 服务 | 地址 |
+|------|------|
+| 🌐 前端界面 | http://localhost:3000 |
+| ⚙️ 后端 API | http://localhost:8000 |
+| 📖 API 文档 | http://localhost:8000/docs |
+| 🧠 Qdrant | http://localhost:6333 |
+
+---
+
+### 方式三：Docker 轻量启动（小服务器推荐）
+
+轻量编排使用 `requirements-lite.txt`，默认关闭可观测性、语义记忆和语义缓存，只启动前端和后端，适合 2C/2G 小服务器。
+
+```bash
+cp .env.example .env
+# 编辑 .env，至少填写 GROQ_API_KEY、DEEPSEEK_API_KEY 或 OPENAI_API_KEY 之一
+
+# 首次构建并启动轻量版
+docker compose -f docker-compose.lite.yml up -d --build
+
+# 日常启动
+docker compose -f docker-compose.lite.yml up -d
+
+# 查看日志
+docker compose -f docker-compose.lite.yml logs -f
+
+# 停止
+docker compose -f docker-compose.lite.yml down
 ```
 
 访问：`http://localhost:3000`

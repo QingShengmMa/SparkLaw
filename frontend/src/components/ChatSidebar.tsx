@@ -18,7 +18,6 @@ const navigation: NavItem[] = [
   { name: '普法问答', href: '/chat', icon: MessageSquare },
   { name: '法律工具', href: '/tools', icon: Wrench },
   { name: '模拟法庭', href: '/debate', icon: Scale },
-  { name: '个人中心', href: '/account', icon: UserCircle },
 ];
 
 export default function ChatSidebar() {
@@ -161,6 +160,13 @@ export default function ChatSidebar() {
         {collapsed ? (
           <div className="mt-auto border-t border-gray-100 p-3 dark:border-slate-800">
             <Link
+              href="/account"
+              className={`mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-lg transition-colors duration-300 ease-in-out ${isActiveRoute('/account') ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-gray-100'}`}
+              title="个人中心"
+            >
+              <UserCircle size={18} className="shrink-0" />
+            </Link>
+            <Link
               href="/settings"
               className={`mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-lg transition-colors duration-300 ease-in-out ${isActiveRoute('/settings') ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-gray-100'}`}
               title="设置"
@@ -230,6 +236,13 @@ export default function ChatSidebar() {
             </div>
 
             <div className="border-t border-gray-100 p-3 dark:border-slate-800">
+              <Link
+                href="/account"
+                className={`mb-2 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-300 ease-in-out ${isActiveRoute('/account') ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-gray-100'}`}
+              >
+                <UserCircle size={18} className="shrink-0" />
+                <span>个人中心</span>
+              </Link>
               <Link
                 href="/settings"
                 className={`mb-2 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-300 ease-in-out ${isActiveRoute('/settings') ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-gray-100'}`}
